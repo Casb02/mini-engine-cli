@@ -379,7 +379,7 @@ export const offlineDue = (clock, now) => clock?.since != null && now - clock.si
 
 The referee recomputes the clock on every snapshot, sets a timer to `since + OFFLINE_SKIP_MS` and, inside the queue, publishes the skip only if the clock is still due for that same turn.
 
-**Keep the screen on.** While a game runs, the seat view asks for a wake lock so phones lock less often. Ask again when the page becomes visible, and ignore every failure:
+**Keep the screen on.** While a game runs, the seat view and the TV view ask for a wake lock: phones lock less often, and the TV, which nobody touches and which is the referee, does not dim or sleep. Ask again when the page becomes visible, and ignore every failure:
 
 ```js
 let lock = null;
