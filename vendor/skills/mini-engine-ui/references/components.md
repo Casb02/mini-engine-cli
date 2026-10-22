@@ -201,7 +201,7 @@ client.on('achievement', ({ player_id, achievement }) => {
 
 The notice is hidden while empty and slides in once when it gets text (`me-reveal`; no motion under reduced motion). The display shows everyone's, a phone only its own. Keep it to one line: the title, on a phone also the description. The event can be missed, so nothing in the game may depend on it.
 
-`room.host_player_id` is the seat of a host who plays along (`null` when the host only leads). That seat always counts as ready.
+`room.host_player_id` is the seat of a host who plays along (`null` with TV or a quiz master). That seat always counts as ready. In a party game do not label it as host: the creator is one of the players.
 
 ## Host
 

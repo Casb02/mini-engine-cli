@@ -10,7 +10,7 @@ export const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
 export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 export const MAX_ACHIEVEMENTS = 50;
 export const MAX_SET_KINDS = 4;
-export const HOST_MODES = ['moderator', 'playing'];
+export const HOST_MODES = ['moderator', 'playing', 'tv'];
 export const ICON_BYTES = 64 * 1024;
 
 export function compileIgnore(line) {
@@ -159,7 +159,7 @@ function checkDeclarations(manifest) {
 function checkHostModes(manifest) {
   const modes = manifest.host_modes;
   if (!Array.isArray(modes) || !modes.length || !modes.every(mode => HOST_MODES.includes(mode))) {
-    throw new CliError('manifest.json: host_modes moet een lijst zijn met "moderator", "playing" of allebei. "hostless" is alleen voor ingebouwde games.');
+    throw new CliError('manifest.json: host_modes moet een lijst zijn met "playing", "tv" en/of "moderator". "hostless" is alleen voor ingebouwde games.');
   }
   const fallback = manifest.default_host_mode ?? 'moderator';
   if (!modes.includes(fallback)) {

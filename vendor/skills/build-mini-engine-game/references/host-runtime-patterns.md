@@ -299,7 +299,7 @@ function awardWinners(room, game) {
 
 - Only the host awards, only while the room is `running` or `finished`: award before `lifecycle('lobby')`.
 - Skip players whose `account_id` is `null`: guests never earn achievements.
-- The engine also answers `not_eligible` when the room was created without logging in, or when another seat uses the host's own account (a moderator who also joined as a player). A host who plays along earns achievements on its own seat (`room.host_player_id`, engine 0.5.1+) like any player. The snapshot does not show whether the host was logged in, so treat `not_eligible` as normal and never show it as an error.
+- The engine also answers `not_eligible` when the room was created without logging in, or when another seat uses the host's own account (a moderator who also joined as a player). A host who plays along earns achievements on its own seat (`room.host_player_id`, engine 0.5.1+) like any player. In a `tv` room the TV is a device: a phone seat with the TV's account may earn them too (engine 0.5.2+). The snapshot does not show whether the host was logged in, so treat `not_eligible` as normal and never show it as an error.
 - Awarding the same achievement again does nothing and still acks, so awarding at every finish is fine. At most 30 awards per room per minute: award only what was earned.
 - Only ids declared in the release the room started with work (`achievement_unknown` otherwise). After adding one, upload and activate the release, then create a new room.
 - The account page lists these awards apart from server-verified ones, under "Toegekend door eigen spellen". Make achievements about how someone played, not about anything that needs a referee you cannot trust.
@@ -315,7 +315,7 @@ client.on('achievement', ({ player_id, achievement }) => {
 
 Like realtime, this event can be lost and is not in the snapshot: keep it a short, calm moment and never the only place where something important appears. With MiniEngineUI, see its achievement note.
 
-## 11. The host plays along (engine 0.5.1+)
+## 11. Iedereen doet mee: the host plays along (engine 0.5.1+)
 
 In a `playing` room the creator has a seat: `room.you.player_id` and `room.host_player_id` are that seat, and it is in `room.players`. The host page is still the referee, and the host connection still cannot send `action`s (`forbidden`). So the host's own move runs the same rules function as a player's action, inside the same queue, and is published with `setState`.
 
@@ -349,8 +349,46 @@ const sendPick = value => run(async () => {
 
 - **Seats come from `room.players`.** It includes the host when `room.host_player_id` is set, so `newGame(room.players.map(player => player.id), …)`, turn order, scores and "everyone has submitted" need no special case.
 - **Readiness**: the engine marks the host seat ready, also after `lifecycle('lobby')`. Hide the ready button on the host page, and leave the host seat out of a "can start" check: `room.players.every(player => player.id === room.host_player_id || player.ready)`.
-- **The host page shows two things**: the player controls for its own seat (when `room.you.player_id` is set) and the console (start, next round, finish). The move is the main action during play; console actions stay secondary. In a `moderator` room `room.you.player_id` is `null`: hide the player controls and the same code works.
+- **In a party game the host page is the player's page.** Same layout, same order, same way to move as a phone. On top of that only what the game needs from the creator: "Start het spel" in the lobby instead of "Ik ben klaar", "Nieuw spel" afterwards, a quiet "Spel stoppen" link at the bottom, and game-specific steps (in a Gartic Phone-like game: walking through the final drawings). No console, no skip button, no cards for rules, players or the shared screen: the creator is a player like everyone else. A quiz master is the exception (`moderator`, a console).
+- **One page, two views.** Keep the referee (queue, publish, actions, timers) in its own module and mount a view on the first snapshot by `room.config.host_mode`: the seat view for `playing` (the same module the player page uses), the shared-screen view for `tv` (§12).
 - **The host's own secret**: the host receives every `player_states` entry; show only `room.player_states?.[room.you.player_id]` in its player area. The other secrets stay hidden (behind a toggle, or not shown at all).
-- **Label the host** on every page with `room.host_player_id` (every role receives it), for example "Hessel · host" in rosters and score lists.
+- **Do not label the host as host** in a party game: the creator is one of the players. Other pages may say who starts: "Hessel start het spel als iedereen klaar is."
 - **No kick, no leave** for the host seat: hide those buttons for `room.host_player_id`.
 - Awards to the host's own seat work like any other (§10).
+
+## 12. TV, offline players and the screen staying on (engine 0.5.2+)
+
+**TV.** In a `tv` room the device that created the room is the TV: `room.you.player_id` and `room.host_player_id` are `null`, and every seat is a phone. Mount the shared-screen view on the host page: QR and code in the lobby, the game large, the scores. Add only "Start het spel" (enabled when `room.players.length >= min_players` and every seat is ready) and "Nieuw spel" afterwards. The referee runs exactly as in `playing`. A separate display is not needed: a group that wants a TV picks TV.
+
+**Skip a player who is offline during their turn.** Phones lock while a player waits, so `connected: false` is normal between turns. Count only offline time within the turn: start a clock at the later of "the turn began" and "this player went offline", as the referee sees it. Stop it when they reconnect, and skip after 30 seconds. Never put the host's own seat on the clock. Keep the clock a pure function so it can be tested:
+
+```js
+export const OFFLINE_SKIP_MS = 30_000;
+/** @typedef {{ turn: string, since: number | null }} OfflineClock */
+/** @returns {OfflineClock | null} null when nobody can be skipped now */
+export function offlineClock(clock, game, players, hostSeat, now) {
+  if (game.phase === 'done' || game.turn === hostSeat) return null;
+  const player = players.find(entry => entry.id === game.turn);
+  if (!player) return null;
+  if (player.connected) return { turn: game.turn, since: null };
+  const same = clock?.turn === game.turn && clock.since !== null;
+  return { turn: game.turn, since: same ? clock.since : now };
+}
+export const offlineDue = (clock, now) => clock?.since != null && now - clock.since >= OFFLINE_SKIP_MS;
+```
+
+The referee recomputes the clock on every snapshot, sets a timer to `since + OFFLINE_SKIP_MS` and, inside the queue, publishes the skip only if the clock is still due for that same turn.
+
+**Keep the screen on.** While a game runs, the seat view and the TV view ask for a wake lock: phones lock less often, and the TV, which nobody touches and which is the referee, does not dim or sleep. Ask again when the page becomes visible, and ignore every failure:
+
+```js
+let lock = null;
+const wanted = () => client.room?.status === 'running' && document.visibilityState === 'visible';
+async function keepScreenOn() {
+  if (!wanted()) { lock?.release().catch(() => {}); lock = null; return; }
+  if (lock || !('wakeLock' in navigator)) return;
+  try { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } catch {}
+}
+client.on('snapshot', keepScreenOn);
+document.addEventListener('visibilitychange', keepScreenOn);
+```

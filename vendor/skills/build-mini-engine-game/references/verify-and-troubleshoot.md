@@ -42,10 +42,10 @@ node --test tests/*.test.mjs             # pure rules in assets/logic.js
 
 ## Play it by hand
 
-1. Open `http://localhost:3000/home`, pick the game, fill in your name and create a room (playing, or moderator when you test that mode). This tab becomes the host at `/room/CODE/host`; when playing, it is also your seat.
+1. Open `http://localhost:3000/home`, pick the game, fill in your name and create a room ("Iedereen doet mee", then again with "TV" when the game offers it). This tab becomes the host at `/room/CODE/host`; with "Iedereen doet mee" it is also your seat and must look like a player's phone, with "TV" it is the shared screen.
 2. For each player open a **new** tab in a separate browser profile/private window or another device, open `/home`, enter the room code, then a unique player name. The tab becomes `/room/CODE/player`. Do not duplicate tabs: `sessionStorage` (where the seat credentials live) is per tab and is copied by "duplicate", which makes both tabs the same seat (`session_replaced`).
 3. Open the display from your host page's button (see host-runtime-patterns §7) or browse to `/room/CODE/display#<display_token>`.
-4. Play a complete game: ready → start → every round → finish → new game. Then: reload the host tab mid-round, put a player offline, and let a player leave mid-round (`POST /api/v1/rooms/CODE/leave` with their token — see sdk-api.md), including a player who holds a special secret role.
+4. Play a complete game: ready → start → every round → finish → new game. Then: reload the host tab mid-round, lock a player's phone during their turn (they are skipped after 30 seconds in a turn-based game), and let a player leave mid-round (`POST /api/v1/rooms/CODE/leave` with their token — see sdk-api.md), including a player who holds a special secret role.
 
 ## Scripted play-through (Playwright)
 
@@ -78,7 +78,7 @@ assert.ok(achievements.some(item => item.id === 'drie-keer-raak' && item.source 
 
 - Create the accounts once with `POST /api/v1/accounts/register` (`{username, password, display_name, email}`; username 3–24 of `a-z 0-9 _`, password at least 10 characters), then log in on later runs. An engine allows five registrations per ten minutes per address, and an engine with Turnstile configured refuses scripted registrations, so test on a local engine. A confirmed email address is not needed.
 - Sander stays a guest on purpose: he must get nothing, and nothing on screen may break.
-- Hessel plays along, so his own seat (`host.player_id`) can earn achievements too (engine 0.5.1+). Another seat with his account cannot: do not also log Hessel in as a player in the same room.
+- Hessel plays along, so his own seat (`host.player_id`) can earn achievements too (engine 0.5.1+). Another seat with his account cannot: do not also log Hessel in as a player in the same room. In a `tv` room (engine 0.5.2+) the TV is a device, so the TV's account may also earn on a phone seat.
 
 ## Privacy check
 
@@ -114,7 +114,7 @@ Also search the player and display DOM for secret values. The host legitimately 
 | `error` event `invalid_request` after a realtime call | Channel or key outside `A-Za-z0-9_.:-` (1–64), data over 2 KiB, or a bad `to`. |
 | `award` fails with `not_eligible` | The player is a guest, the room was created without logging in, or another seat uses the host's own account. Expected; do not show it as an error. |
 | The host's own move fails with `forbidden` | The host page called `action()`. Apply the move in the host queue with `setState` (host-runtime-patterns §11). |
-| Engine refuses the package: `Invalid runtime or unsupported host modes.` | `hostless` in `host_modes`, an empty list, or `playing` on an engine older than 0.5.1. |
+| Engine refuses the package: `Invalid runtime or unsupported host modes.` | `hostless` in `host_modes`, an empty list, `playing` on an engine older than 0.5.1, or `tv` on an engine older than 0.5.2 (or with `runtime: "server"`). |
 | `Invalid icon: …` | The `icon` path or file breaks a rule in `manifest-and-settings.md` (path under `assets/`, `.svg`, ≤ 64 KiB, no scripts or event attributes). |
 | `award` fails with `achievement_unknown` | The id is not in the release this room started with: check `manifest.json`, upload and activate, then create a new room. |
 | `gameData` returns another shape than `data.json` | The room plays with a player's own set (`room.set`); give `data.json` the shape of the set kind. |

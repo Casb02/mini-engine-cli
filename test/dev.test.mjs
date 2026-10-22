@@ -106,7 +106,8 @@ describe('me dev speaks the engine protocol', () => {
       return;
     }
     ({ home, cleanup } = await tempHome());
-    await writeGame(home, 'stemtest');
+    // The template offers Iedereen doet mee and TV; these checks also cover a host who only leads.
+    await writeGame(home, 'stemtest', manifest => ({ ...manifest, host_modes: [...manifest.host_modes, 'moderator'] }));
     dev = await startDev(['stemtest', '--port', '0'], { home }).ready();
     base = dev.url;
     gameId = 'stemtest';
@@ -465,6 +466,57 @@ describe('me dev lets the host of a browser-host game play along', { skip: PARIT
     assert.deepEqual(state.seats.map(seat => seat.label), ['Spelleider', 'Scherm', 'Dani']);
     const credential = JSON.parse(decodeURIComponent(state.seats[0].hash));
     assert.equal(typeof credential.player_id, 'string');
+  });
+});
+
+describe('me dev knows the TV: a seatless host that shows the game', { skip: PARITY_URL ? 'parity runs use a fixed game' : false }, () => {
+  let home;
+  let cleanup;
+  let dev;
+  let base;
+  const clients = [];
+
+  before(async () => {
+    ({ home, cleanup } = await tempHome());
+    await writeGame(home, 'feesttafel', manifest => ({ ...manifest, host_modes: ['playing', 'tv'], default_host_mode: 'playing', achievements: [{ id: 'winnaar', title: 'Winnaar', description: 'Win de stemming.' }] }));
+    dev = await startDev(['feesttafel', '--port', '0', '--players', '1'], { home }).ready();
+    base = dev.url;
+  });
+
+  after(async () => {
+    for (const client of clients) client.close();
+    await dev?.stop();
+    await cleanup?.();
+  });
+
+  const open = credentials => {
+    const client = connect(base, credentials);
+    clients.push(client);
+    return client;
+  };
+
+  test('a tv room gives the creator no seat', async () => {
+    const tv = await new ApiClient({ baseUrl: base, accountToken: HOST_ACCOUNT }).createRoom({ game_id: 'feesttafel', name: 'Cas', config: { host_mode: 'tv' } });
+    assert.equal(tv.role, 'host');
+    assert.equal(tv.player_id, null);
+    const view = (await call(base, `/api/v1/rooms/${tv.code}`, { token: tv.token })).json;
+    assert.equal(view.host_player_id, null);
+    assert.deepEqual(view.players, []);
+    assert.equal(view.config.host_mode, 'tv');
+  });
+
+  test('the owner of the TV earns achievements on their own phone', async () => {
+    const tv = await new ApiClient({ baseUrl: base, accountToken: HOST_ACCOUNT }).createRoom({ game_id: 'feesttafel', config: { host_mode: 'tv' } });
+    const phone = await new ApiClient({ baseUrl: base, accountToken: HOST_ACCOUNT }).joinRoom(tv.code, 'Cas');
+    const screen = open(tv);
+    const cas = open(phone);
+    await screen.waitForSnapshot(room => room.players.length === 1 && room.players[0].connected);
+    await cas.ready(true);
+    await screen.waitForSnapshot(room => room.players.every(p => p.ready));
+    await screen.lifecycle('running');
+    await screen.award(phone.player_id, 'winnaar');
+    const earned = await until(() => cas.achievements[0], 'the achievement event on the phone');
+    assert.equal(earned.achievement.id, 'winnaar');
   });
 });
 

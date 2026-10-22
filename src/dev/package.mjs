@@ -5,7 +5,7 @@ import { checkLimits, checkManifest, collectFiles } from '../pack.mjs';
 import { isObject } from './json.mjs';
 import { validateAchievements, validateSetKinds, validateSettings, validateSettingsSchema } from './schema.mjs';
 
-const MODES = ['moderator', 'playing', 'hostless'];
+const MODES = ['moderator', 'playing', 'tv', 'hostless'];
 const ROLES = ['host', 'player', 'display'];
 
 const refused = message => new CliError(`De engine weigert deze game: ${message}`, { code: 'invalid_game' });
@@ -84,7 +84,8 @@ export function engineMetadata(manifest) {
       !['host', 'server'].includes(m.runtime) ||
       !m.host_modes.length ||
       !m.host_modes.includes(m.default_host_mode) ||
-      (m.runtime === 'host' && m.host_modes.includes('hostless'))
+      (m.runtime === 'host' && m.host_modes.includes('hostless')) ||
+      (m.runtime === 'server' && m.host_modes.includes('tv'))
     ) {
       throw new Error('Invalid runtime or unsupported host modes.');
     }

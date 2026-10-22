@@ -88,7 +88,7 @@ export const gameCommands = [
     usage: 'game new <slug> [--dir MAP]',
     summary: 'Nieuwe game maken vanuit het SDK-sjabloon',
     description:
-      'Maakt een werkende stemgame (runtime host; de spelleider speelt standaard mee) in ./<slug>. De slug wordt het id van de game.\nDe map bevat ook jsconfig.json en types/ voor je editor; .meignore houdt die buiten de upload.',
+      'Maakt een werkende stemgame (runtime host; iedereen doet standaard mee, TV kan ook) in ./<slug>. De slug wordt het id van de game.\nDe map bevat ook jsconfig.json en types/ voor je editor; .meignore houdt die buiten de upload.',
     options: { dir: { type: 'string' } },
     optionHelp: [['--dir MAP', 'Doelmap (standaard ./<slug>); moet nog niet bestaan']],
     args: [1, 1],
