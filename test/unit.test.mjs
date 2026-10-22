@@ -69,7 +69,7 @@ describe('config', () => {
     assert.equal(settings.adminToken, 'b'.repeat(40));
     settings = await resolveSettings({ ...env, MINIENGINE_SERVER: 'http://env:2' }, { server: 'https://flag.example' });
     assert.equal(settings.server, 'https://flag.example');
-    assert.equal((await resolveSettings({ HOME: join(home, 'none') })).server, 'http://localhost:3000');
+    assert.equal((await resolveSettings({ HOME: join(home, 'none') })).server, 'https://miniengine.nl');
   });
 
   test('rejects malformed config and server URLs', async () => {

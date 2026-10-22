@@ -72,8 +72,10 @@ describe('help and usage', () => {
   });
 
   test('--version prints the package version', async () => {
-    assert.equal((await runMe(['--version'], { home })).stdout, '0.3.0\n');
-    assert.deepEqual((await runMe(['--version', '--json'], { home })).json(), { version: '0.3.0', sdk: '0.2.0' });
+    assert.equal((await runMe(['--version'], { home })).stdout, `${JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version}\n`);
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+    const vendored = JSON.parse(await readFile(new URL('../vendor/VENDOR.json', import.meta.url), 'utf8'));
+    assert.deepEqual((await runMe(['--version', '--json'], { home })).json(), { version: pkg.version, sdk: vendored.sdk.version });
   });
 
   test('unknown commands and options exit 2 with a hint', async () => {
@@ -338,7 +340,7 @@ describe('skill', () => {
   test('list shows the vendored skills', async () => {
     const result = await runMe(['skill', 'list', '--json'], { home });
     const data = result.json();
-    assert.equal(data.sdk_version, '0.2.0');
+    assert.equal(data.sdk_version, JSON.parse(await readFile(new URL('../vendor/VENDOR.json', import.meta.url), 'utf8')).sdk.version);
     assert.deepEqual(data.skills.map(skill => skill.name), ['build-mini-engine-game', 'design-mini-engine-game-ui']);
   });
 
@@ -382,7 +384,7 @@ describe('setup', () => {
     assert.equal(result.code, 0, result.stdout + result.stderr);
     const data = result.json();
     assert.equal(data.server, fake.url);
-    assert.equal(data.server_version, '0.3.0');
+    assert.equal(data.server_version, '0.4.0');
     assert.equal(data.account.username, 'sander');
     assert.equal(data.skills, null);
     assert.equal(data.game.id, 'eerste');

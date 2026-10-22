@@ -52,7 +52,7 @@ export const authCommands = [
       'Vraagt je dev key (de invoer blijft onzichtbaar), controleert hem bij de server en slaat hem op.\nEen dev key krijg je van de eigenaar van de server. Zonder terminal wordt één regel van stdin gelezen.',
     options: { token: { type: 'string' } },
     optionHelp: [
-      ['--server URL', 'Server om in te loggen en op te slaan (standaard http://localhost:3000)'],
+      ['--server URL', 'Server om in te loggen en op te slaan (standaard https://miniengine.nl)'],
       ['--token KEY', 'Dev key als argument, voor scripts (komt in je shellgeschiedenis)'],
     ],
     examples: ['me auth', 'me auth --server https://games.example.nl', 'printf %s "$KEY" | me auth'],
