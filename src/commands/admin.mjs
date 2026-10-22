@@ -21,6 +21,7 @@ export const adminGroups = [
   { path: ['admin'], summary: 'Beheer voor de eigenaar van de server (admintoken nodig)', description: 'Het admintoken is MINI_ENGINE_ADMIN_TOKEN van de server. Bewaar het met: me admin login' },
   { path: ['admin', 'token'], summary: 'Dev keys van ontwikkelaars beheren' },
   { path: ['admin', 'game'], summary: 'Games van ontwikkelaars blokkeren of vrijgeven' },
+  { path: ['admin', 'account'], summary: 'Accounts van spelers en ontwikkelaars' },
 ];
 
 async function setBlocked(ctx, blocked) {
@@ -28,7 +29,7 @@ async function setBlocked(ctx, blocked) {
   const game = await ctx.admin(`/games/${enc(id)}`, { method: 'PUT', body: { enabled: !blocked } });
   return {
     data: game,
-    text: blocked ? `${game.id} is geblokkeerd. De eigenaar kan hem niet meer aanzetten; lopende rooms spelen door.` : `${game.id} is vrijgegeven en staat ${game.enabled ? 'aan' : 'uit'}.`,
+    text: blocked ? `${game.id} is geblokkeerd. Er wordt niets meer van geserveerd, ook niet aan lopende rooms, en de eigenaar kan hem niet zelf weer aanzetten.` : `${game.id} is vrijgegeven en staat ${game.enabled ? 'aan' : 'uit'}.`,
   };
 }
 
@@ -133,6 +134,18 @@ export const adminCommands = [
       const [id] = ctx.args;
       await ctx.admin(`/dev-tokens/${enc(id)}`, { method: 'DELETE' });
       return { data: { id, revoked: true }, text: `Dev key ${id} ingetrokken. Hij werkt niet meer.` };
+    },
+  },
+  {
+    path: ['admin', 'account', 'verify'],
+    usage: 'admin account verify <gebruikersnaam>',
+    summary: 'E-mailadres van een account handmatig bevestigen',
+    description: 'Voor wie de bevestigingsmail niet krijgt. Een dev key kan alleen worden gemaakt voor een account met een bevestigd e-mailadres.',
+    args: [1, 1],
+    async run(ctx) {
+      const [username] = ctx.args;
+      const result = await ctx.admin(`/accounts/${enc(username)}/verify-email`, { method: 'POST' });
+      return { data: result, text: `E-mailadres van ${result.username} (${result.email}) is bevestigd.` };
     },
   },
   {

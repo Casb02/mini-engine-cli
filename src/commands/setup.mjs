@@ -30,7 +30,7 @@ export const setupCommands = [
       yes: { type: 'boolean', short: 'y' },
     },
     optionHelp: [
-      ['--server URL', 'Server (standaard de huidige, anders http://localhost:3000)'],
+      ['--server URL', 'Server (standaard de huidige, anders https://miniengine.nl)'],
       ['--token KEY', 'Dev key; zonder deze optie vraagt setup erom'],
       ['--skills, --no-skills', 'AI-skills wel of niet installeren in ~/.claude/skills'],
       ['--game SLUG, --no-game', 'Wel of geen eerste game maken'],

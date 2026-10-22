@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { CliError, usageError } from './errors.mjs';
 
-export const DEFAULT_SERVER = 'http://localhost:3000';
+export const DEFAULT_SERVER = 'https://miniengine.nl';
 const KEYS = ['server', 'token', 'admin_token'];
 
 export function homeDir(env) {
@@ -59,7 +59,7 @@ export function normalizeServer(value) {
   try {
     url = new URL(text);
   } catch {
-    throw usageError(`Ongeldige server-URL: ${text}`, 'Gebruik bijvoorbeeld http://localhost:3000 of https://games.example.nl');
+    throw usageError(`Ongeldige server-URL: ${text}`, 'Gebruik bijvoorbeeld https://miniengine.nl of http://localhost:3000');
   }
   if (!['http:', 'https:'].includes(url.protocol)) throw usageError(`Server-URL moet met http:// of https:// beginnen: ${text}`);
   if (url.search || url.hash) throw usageError(`Server-URL mag geen ? of # bevatten: ${text}`);

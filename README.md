@@ -102,6 +102,7 @@ Voor de eigenaar van de server. Hiervoor heb je het admintoken nodig: de waarde 
 | `me admin token create <gebruikersnaam> [--label TEKST] [--expires DAGEN]` | Maakt een dev key voor een bestaand account. De sleutel wordt één keer getoond. |
 | `me admin token list` | Alle dev keys met laatste gebruik en status. |
 | `me admin token revoke <id>` | Trekt een dev key in. Hij werkt direct niet meer. |
+| `me admin account verify <gebruikersnaam>` | Bevestigt het e-mailadres van een account handmatig. Een dev key kan alleen voor een account met een bevestigd adres. |
 | `me admin games` | Alle geüploade games met eigenaar. |
 | `me admin game block <id>` / `unblock <id>` | Noodstop: de engine serveert niets meer van de game, ook niet aan lopende rooms, en de eigenaar kan hem niet zelf weer aanzetten. `unblock` heft dat op. |
 
@@ -148,7 +149,7 @@ Het bestand krijgt rechten `0600` en de map `0700`. Omgevingsvariabelen gaan voo
 
 | Variabele | Waarvoor |
 | --- | --- |
-| `MINIENGINE_SERVER` | Server-URL (standaard `http://localhost:3000`) |
+| `MINIENGINE_SERVER` | Server-URL (standaard `https://miniengine.nl`; lokaal `http://localhost:3000`) |
 | `MINIENGINE_TOKEN` | Dev key |
 | `MINIENGINE_ADMIN_TOKEN` | Admintoken |
 

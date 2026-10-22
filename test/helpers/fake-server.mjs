@@ -126,7 +126,7 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
 
   function route(method, path, req, body) {
     let m;
-    if (method === 'GET' && path === '/api/health') return [200, { status: 'ok', version: '0.3.0' }];
+    if (method === 'GET' && path === '/api/health') return [200, { status: 'ok', version: '0.4.0' }];
     if (path.startsWith('/api/v1/admin/')) {
       requireAdmin(req);
       if (method === 'POST' && path === '/api/v1/admin/dev-tokens') {
@@ -144,6 +144,12 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
         if (!token) fail(404, 'token_not_found', 'Deze dev key bestaat niet.');
         token.revoked_at = tick();
         return [204];
+      }
+      if (method === 'POST' && (m = /^\/api\/v1\/admin\/accounts\/([^/]+)\/verify-email$/.exec(path))) {
+        const account = state.accounts.get(decodeURIComponent(m[1]));
+        if (!account) fail(404, 'account_not_found', 'Dit account bestaat niet.');
+        account.email_verified = true;
+        return [200, { username: account.username, email: `${account.username}@example.com`, email_verified: true }];
       }
       if (method === 'GET' && path === '/api/v1/admin/games') return [200, { games: [...state.games.values()].map(adminView) }];
       if (method === 'PUT' && (m = /^\/api\/v1\/admin\/games\/([^/]+)$/.exec(path))) {

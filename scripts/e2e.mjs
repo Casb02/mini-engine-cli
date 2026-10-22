@@ -70,14 +70,19 @@ try {
 
   const registered = await api('/api/v1/accounts/register', {
     method: 'POST',
-    body: JSON.stringify({ username, password: `e2e-password-${suffix}`, display_name: 'E2E' }),
+    body: JSON.stringify({ username, password: `e2e-password-${suffix}`, display_name: 'E2E', email: `${username}@example.com` }),
   });
-  check(registered.status === 201, `account ${username} geregistreerd`, registered.data);
+  check(registered.status === 201 && registered.data.account.email_verified === false, `account ${username} geregistreerd, e-mail nog niet bevestigd`, registered.data);
 
   const admin = await me(['admin', 'login', '--token', adminToken]);
   check(admin.admin_token.masked.endsWith(adminToken.slice(-4)), 'me admin login');
   const config = await stat(join(home, 'config', 'miniengine', 'config.json'));
   check((config.mode & 0o777) === 0o600, 'config.json heeft rechten 0600');
+
+  const unverified = await me(['admin', 'token', 'create', username], { expectFail: true });
+  check(unverified.error?.code === 'email_not_verified', 'geen dev key zonder bevestigd e-mailadres', unverified);
+  const verified = await me(['admin', 'account', 'verify', username]);
+  check(verified.email_verified === true, 'me admin account verify', verified);
 
   const created = await me(['admin', 'token', 'create', username, '--label', 'e2e', '--expires', '1']);
   check(/^med_[0-9a-f]{64}$/.test(created.token) && created.username === username, 'me admin token create', created);
