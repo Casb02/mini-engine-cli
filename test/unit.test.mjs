@@ -180,6 +180,33 @@ describe('packing', () => {
     assert.throws(() => checkManifest(manifest(), ['manifest.json', 'player.html']), /host.html/);
   });
 
+  test('pre-checks achievements and set_kinds with the engine rules', () => {
+    const paths = ['manifest.json', 'host.html', 'player.html'];
+    const achievement = (overrides = {}) => ({ id: 'eerste-buzz', title: 'Eerste buzz', description: 'Druk als eerste op de knop.', ...overrides });
+    const kind = (overrides = {}) => ({ id: 'bord', title: 'Eigen bord', description: 'Vijf categorieën.', schema: { type: 'string' }, ...overrides });
+    const ok = fields => checkManifest(manifest(fields), paths);
+    const refused = (fields, pattern) => assert.throws(() => checkManifest(manifest(fields), paths), pattern);
+
+    assert.deepEqual(ok({ achievements: [achievement()], set_kinds: [kind()] }).achievements, [achievement()]);
+    ok({ achievements: [], set_kinds: [] });
+    ok({ achievements: [achievement({ id: `a${'b'.repeat(47)}`, title: '🎉'.repeat(60), description: 'é'.repeat(160) })] });
+    ok({ achievements: [achievement({ id: '0_ronde-1' })] });
+    refused({ achievements: null }, /achievements moet een lijst zijn/);
+    refused({ achievements: [achievement({ id: `a${'b'.repeat(48)}` })] }, /achievements\[0\]\.id moet/);
+    refused({ achievements: [achievement({ id: '_ronde' })] }, /achievements\[0\]\.id moet/);
+    refused({ achievements: [achievement({ id: 'Ronde' })] }, /achievements\[0\]\.id moet/);
+    refused({ achievements: [achievement({ id: 7 })] }, /achievements\[0\] moet een object zijn/);
+    refused({ achievements: ['eerste-buzz'] }, /achievements\[0\] moet een object zijn/);
+    refused({ achievements: [achievement({ title: 'Eerste\tbuzz' })] }, /achievement eerste-buzz: gebruik een titel/);
+    refused({ achievements: [achievement({ description: 'é'.repeat(161) })] }, /beschrijving van 1 tot 160 tekens/);
+    refused({ achievements: [achievement({ title: '' })] }, /gebruik een titel van 1 tot 60 tekens/);
+    refused({ set_kinds: 'bord' }, /set_kinds moet een lijst zijn/);
+    refused({ set_kinds: [kind(), kind({ title: 'Ander bord' })] }, /het id bord komt twee keer voor in set_kinds/);
+    refused({ set_kinds: [kind({ schema: undefined })] }, /set-soort bord: schema moet een object zijn/);
+    refused({ set_kinds: [kind({ schema: null })] }, /set-soort bord: schema moet een object zijn/);
+    refused({ set_kinds: [{ id: 'bord', title: 'Eigen bord', schema: {} }] }, /set_kinds\[0\] moet een object zijn met id, title, description \(tekst\) en schema/);
+  });
+
   test('a scaffolded game packs without its editor files', async () => {
     const { directory } = await scaffoldGame('ja-of-nee', join(home, 'ja-of-nee'));
     const pack = await packGame(directory);

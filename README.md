@@ -7,7 +7,7 @@
 
 Met de Mini Engine CLI upload en beheer je je eigen partygames op een Mini Engine-server: een game maken vanuit het SDK-sjabloon, nieuwe versies uploaden, wisselen tussen versies en de game aan- of uitzetten. De eigenaar van de server beheert er ook de dev keys mee.
 
-De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer.
+De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig.
 
 ## Installeren
 
@@ -136,6 +136,33 @@ assets/**/*.wav
 Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` met `host_modes: ["moderator"]` gebruikt en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
 
 De eerste versie van een nieuwe game wordt meteen actief. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
+
+Na een geslaagde upload van een actieve versie toont de CLI waar je de game start: `<server>/home/new/<id>`. Bij een server ouder dan 0.5 is dat nog `/demo/new/<id>`.
+
+### Achievements en eigen sets
+
+Sinds Mini Engine 0.5 kan `manifest.json` twee lijsten bevatten:
+
+- `achievements`: hoogstens 50, elk met `id`, `title` en `description`.
+- `set_kinds`: hoogstens 4 soorten eigen sets, elk met `id`, `title`, `description` en `schema`.
+
+```json
+"achievements": [
+  { "id": "eerste-buzz", "title": "Eerste buzz", "description": "Druk als eerste op de knop." }
+],
+"set_kinds": [
+  {
+    "id": "bord",
+    "title": "Eigen bord",
+    "description": "Een eigen bord met categorieën en vragen.",
+    "schema": { "type": "object", "additionalProperties": false, "properties": { "titel": { "type": "string", "maxLength": 60 } } }
+  }
+]
+```
+
+Voor het uploaden controleert de CLI de vorm: een `id` heeft 1 tot 48 kleine letters, cijfers, `_` of `-`, begint met een letter of cijfer en komt per lijst één keer voor; een titel heeft 1 tot 60 tekens en een beschrijving 1 tot 160, zonder regeleinden; `schema` is een object. Of het schema zelf klopt, controleert de server bij de upload.
+
+Het overzicht na de upload en `me game upload --dry-run` tonen welke achievements en soorten sets de game heeft. Draait de server een versie ouder dan 0.5, dan krijg je voor het uploaden een waarschuwing: zo'n server negeert deze velden. De upload gaat wel door.
 
 ## Configuratie
 

@@ -25,10 +25,10 @@ function contentHash(files) {
   return hash.digest('hex');
 }
 
-export async function startFakeServer({ adminToken = 'admin-token-0123456789abcdef0123456789', builtins = ['common-dice'], quotaGames = 10, quotaReleases = 10 } = {}) {
+export async function startFakeServer({ adminToken = 'admin-token-0123456789abcdef0123456789', builtins = ['common-dice'], quotaGames = 10, quotaReleases = 10, version = '0.5.0' } = {}) {
   let clock = 1_760_000_000;
   const tick = () => (clock += 1);
-  const state = { accounts: new Map(), tokens: [], games: new Map(), requests: [], adminToken };
+  const state = { accounts: new Map(), tokens: [], games: new Map(), requests: [], adminToken, version };
 
   const addAccount = username => {
     const account = { id: randomUUID(), username, display_name: username[0].toUpperCase() + username.slice(1) };
@@ -126,7 +126,7 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
 
   function route(method, path, req, body) {
     let m;
-    if (method === 'GET' && path === '/api/health') return [200, { status: 'ok', version: '0.4.0' }];
+    if (method === 'GET' && path === '/api/health') return [200, { status: 'ok', version: state.version }];
     if (path.startsWith('/api/v1/admin/')) {
       requireAdmin(req);
       if (method === 'POST' && path === '/api/v1/admin/dev-tokens') {
