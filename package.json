@@ -8,10 +8,11 @@
     "miniengine": "bin/me.mjs"
   },
   "files": [
+    "LICENSE",
+    "README.md",
     "bin",
     "src",
-    "vendor",
-    "README.md"
+    "vendor"
   ],
   "engines": {
     "node": ">=22"
@@ -26,5 +27,5 @@
     "url": "git+https://github.com/Casb02/mini-engine-cli.git"
   },
   "private": true,
-  "license": "UNLICENSED"
+  "license": "MIT"
 }
