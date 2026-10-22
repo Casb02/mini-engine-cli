@@ -337,11 +337,13 @@ describe('game', () => {
 });
 
 describe('skill', () => {
+  const vendoredSkills = async () => (await readdir(new URL('../vendor/skills/', import.meta.url), { withFileTypes: true })).filter(entry => entry.isDirectory());
+
   test('list shows the vendored skills', async () => {
     const result = await runMe(['skill', 'list', '--json'], { home });
     const data = result.json();
     assert.equal(data.sdk_version, JSON.parse(await readFile(new URL('../vendor/VENDOR.json', import.meta.url), 'utf8')).sdk.version);
-    assert.deepEqual(data.skills.map(skill => skill.name), ['build-mini-engine-game', 'design-mini-engine-game-ui']);
+    assert.deepEqual(data.skills.map(skill => skill.name), ['build-mini-engine-game', 'design-mini-engine-game-ui', 'mini-engine-ui']);
   });
 
   test('install into ~/.claude/skills, --project and --path', async () => {
@@ -350,12 +352,14 @@ describe('skill', () => {
     const skill = join(home, '.claude', 'skills', 'build-mini-engine-game');
     assert.ok((await readFile(join(skill, 'SKILL.md'), 'utf8')).includes('name: build-mini-engine-game'));
     assert.ok((await stat(join(skill, 'scripts', 'play.mjs'))).isFile());
+    const font = join('mini-engine-ui', 'kit', 'ui', 'fonts', 'dm-sans.woff2');
+    assert.ok((await readFile(join(home, '.claude', 'skills', font))).equals(await readFile(new URL(`../vendor/skills/${font}`, import.meta.url))));
     const project = join(home, 'project');
     await mkdir(project);
     await runMe(['skill', 'install', 'design-mini-engine-game-ui', '--project'], { home, cwd: project });
     assert.deepEqual(await readdir(join(project, '.claude', 'skills')), ['design-mini-engine-game-ui']);
     await runMe(['skill', 'install', '--path', 'elders'], { home });
-    assert.equal((await readdir(join(home, 'elders'))).length, 2);
+    assert.equal((await readdir(join(home, 'elders'))).length, (await vendoredSkills()).length);
     const both = await runMe(['skill', 'install', '--project', '--path', 'x'], { home });
     assert.equal(both.code, 2);
   });
@@ -363,7 +367,7 @@ describe('skill', () => {
   test('refuses to overwrite a different skill unless --force', async () => {
     await runMe(['skill', 'install'], { home });
     const same = await runMe(['skill', 'install', '--json'], { home });
-    assert.deepEqual(same.json().skills.map(skill => skill.status), ['al actueel', 'al actueel']);
+    assert.deepEqual(same.json().skills.map(skill => skill.status), (await vendoredSkills()).map(() => 'al actueel'));
     const file = join(home, '.claude', 'skills', 'build-mini-engine-game', 'SKILL.md');
     await writeFile(file, 'eigen versie');
     const refused = await runMe(['skill', 'install'], { home });

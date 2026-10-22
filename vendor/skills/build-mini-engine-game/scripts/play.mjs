@@ -31,26 +31,26 @@ async function seat(session, { width = 390, height = 844 } = {}) {
 }
 try {
   const host = await post('/api/v1/rooms', { game_id: gameId, config: { host_mode: 'moderator', display_enabled: true } });
-  const players = [await post(`/api/v1/rooms/${host.code}/join`, { name: 'Ana' }), await post(`/api/v1/rooms/${host.code}/join`, { name: 'Bo' })];
+  const players = [await post(`/api/v1/rooms/${host.code}/join`, { name: 'Dani' }), await post(`/api/v1/rooms/${host.code}/join`, { name: 'Sander' })];
   const hostSeat = await seat(host, { width: 1280, height: 800 });
-  const [ana, bo] = await Promise.all(players.map(player => seat(player)));
+  const [dani, sander] = await Promise.all(players.map(player => seat(player)));
   const displayContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   const display = await displayContext.newPage();
   await display.goto(`${base}/room/${host.code}/display#${encodeURIComponent(host.display_token)}`);
 
   // ---- game-specific steps: replace with your own buttons and assertions ----
-  for (const player of [ana, bo]) await player.game.locator('#ready').click();
+  for (const player of [dani, sander]) await player.game.locator('#ready').click();
   await hostSeat.game.locator('#start:not([disabled])').click();
-  await ana.game.locator('#vote-yes:not([disabled])').click();
-  await bo.game.locator('#vote-no:not([disabled])').click();
+  await dani.game.locator('#vote-yes:not([disabled])').click();
+  await sander.game.locator('#vote-no:not([disabled])').click();
   await display.frameLocator('iframe').locator('#yes', { hasText: '1' }).waitFor();
 
   // Privacy: nothing secret may appear in a player's or the display's snapshot.
-  const anaView = await snapshot(host.code, players[0].token);
-  assert.equal(anaView.host_state, undefined);
-  assert.equal(anaView.player_states, undefined);
+  const daniView = await snapshot(host.code, players[0].token);
+  assert.equal(daniView.host_state, undefined);
+  assert.equal(daniView.player_states, undefined);
   await display.screenshot({ path: join(shots, `display-${gameId}.png`) });
-  await ana.page.screenshot({ path: join(shots, `player-${gameId}.png`) });
+  await dani.page.screenshot({ path: join(shots, `player-${gameId}.png`) });
   console.log('play-through passed', host.code);
 } finally {
   await browser.close();

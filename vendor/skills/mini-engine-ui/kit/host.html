@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>__TITLE__ · Host</title>
+  <link rel="stylesheet" href="/games/__SLUG__/assets/ui/mini-engine-ui.css">
+  <link rel="stylesheet" href="/games/__SLUG__/assets/style.css">
+</head>
+<body data-role="host" data-theme="kalk">
+  <div class="me-page">
+    <header class="me-bar">
+      <span class="me-bar-name">__TITLE__ <span class="me-role">Host</span></span>
+      <div class="me-bar-end"><span class="me-code" id="code"></span></div>
+    </header>
+    <div class="me-notices"><p id="error" class="me-notice is-error" role="alert"></p></div>
+    <main class="me-stage">
+      <div class="me-wide me-console">
+        <div class="me-stack">
+          <h1 id="prompt" class="me-title">Connecting…</h1>
+          <p id="status" class="me-status" role="status">Waiting for the room.</p>
+          <section id="host-controls" class="me-stack" hidden>
+            <div class="me-actions"><button id="start" class="me-button is-primary">Start voting</button><button id="finish" class="me-button">Finish round</button><button id="reset" class="me-button">New round</button></div>
+            <p class="me-muted">Keep this tab open: it runs the game.</p>
+          </section>
+          <section class="me-tally" aria-label="Votes">
+            <div class="me-card"><strong id="yes" class="me-big">0</strong><span class="me-label">Yes</span></div>
+            <div class="me-card"><strong id="no" class="me-big">0</strong><span class="me-label">No</span></div>
+          </section>
+          <section id="player-controls" hidden><button id="ready" class="me-button">I'm ready</button><div class="me-choices"><button id="vote-yes" class="me-choice">Yes</button><button id="vote-no" class="me-choice">No</button></div><p id="my-vote"></p></section>
+        </div>
+        <aside class="me-card">
+          <h2>Players</h2>
+          <ul id="players" class="me-roster" aria-label="Players"></ul>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/games/__SLUG__/assets/app.js"></script>
+</body>
+</html>
