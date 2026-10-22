@@ -7,6 +7,7 @@ import { createPrompter } from './prompt.mjs';
 import { PACKAGE, vendorInfo } from './vendor.mjs';
 import { adminCommands, adminGroups } from './commands/admin.mjs';
 import { authCommands, authGroups } from './commands/auth.mjs';
+import { devCommands } from './commands/dev.mjs';
 import { gameCommands, gameGroups } from './commands/game.mjs';
 import { setupCommands } from './commands/setup.mjs';
 import { skillCommands, skillGroups } from './commands/skill.mjs';
@@ -24,13 +25,14 @@ const GLOBAL_HELP = [
   ['-h, --help', 'Help bij een commando'],
 ];
 
-export const COMMANDS = [...setupCommands, ...authCommands, ...gameCommands, ...skillCommands, ...adminCommands];
+export const COMMANDS = [...setupCommands, ...authCommands, ...gameCommands, ...devCommands, ...skillCommands, ...adminCommands];
 const GROUPS = [...authGroups, ...gameGroups, ...skillGroups, ...adminGroups];
 
 const SECTIONS = [
   ['Begin hier', ['setup']],
   ['Inloggen', ['auth']],
   ['Games', ['game']],
+  ['Lokaal testen', ['dev']],
   ['AI-skills', ['skill']],
   ['Beheer (alleen de eigenaar van de server)', ['admin']],
 ];
@@ -220,8 +222,9 @@ export async function main(argv, io) {
     }
     ctx = makeContext(io, parsed.values, args);
     const result = (await command.run(ctx)) ?? {};
-    if (ctx.json) stdout.write(`${JSON.stringify(result.data ?? {}, null, 2)}\n`);
-    else if (result.text) stdout.write(`${terminalSafe(result.text)}\n`);
+    if (ctx.json) {
+      if (!result.silent) stdout.write(`${JSON.stringify(result.data ?? {}, null, 2)}\n`);
+    } else if (result.text) stdout.write(`${terminalSafe(result.text)}\n`);
     return result.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CliError)) {

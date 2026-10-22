@@ -2,7 +2,7 @@
 // Usage: node scripts/sync-vendor.mjs [--sdk ../mini-engine-sdk] | --check
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -15,6 +15,7 @@ const record = join(vendor, 'VENDOR.json');
 const COPIES = [
   ['bin/templates.mjs', 'sdk/bin/templates.mjs'],
   ['types/mini-engine.d.ts', 'sdk/types/mini-engine.d.ts'],
+  ['dist/mini-engine.js', 'sdk/dist/mini-engine.js'],
   ['skills', 'skills'],
 ];
 
@@ -57,11 +58,17 @@ if (values.check) {
   const sdk = resolve(values.sdk ?? process.env.MINI_ENGINE_SDK ?? join(root, '..', 'mini-engine-sdk'));
   const pkg = JSON.parse(await readFile(join(sdk, 'package.json'), 'utf8'));
   if (pkg.name !== '@casb02/mini-engine-sdk') throw new Error(`${sdk} is geen Mini Engine SDK-checkout.`);
+  try {
+    await access(join(sdk, 'dist', 'mini-engine.js'));
+  } catch {
+    console.error(`${sdk}/dist/mini-engine.js ontbreekt. Draai eerst npm run build in de SDK.`);
+    process.exit(1);
+  }
   let commit = null;
   let dirty = false;
   try {
     commit = execFileSync('git', ['-C', sdk, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-    dirty = execFileSync('git', ['-C', sdk, 'status', '--porcelain', '--', 'bin', 'types', 'skills'], { encoding: 'utf8' }).trim() !== '';
+    dirty = execFileSync('git', ['-C', sdk, 'status', '--porcelain', '--', 'bin', 'types', 'skills', 'src'], { encoding: 'utf8' }).trim() !== '';
   } catch {
     commit = null;
   }

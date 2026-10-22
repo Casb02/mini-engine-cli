@@ -76,6 +76,13 @@ Elk commando heeft `--help`, bijvoorbeeld `me game upload --help`.
 
 `me game prune` en `me game delete` vragen om bevestiging. Zonder terminal (in een script) is `--yes` verplicht.
 
+### Lokaal testen
+
+| Commando | Wat |
+| --- | --- |
+| `me dev [map]` | Start een lokale, nagebootste engine voor je game en opent een overzicht met de spelleider, het scherm en de spelers naast elkaar. |
+| `me dev --players 4 --set bord.json` | Met vier spelers, en met `bord.json` als eigen set in plaats van `data.json`. |
+
 ### AI-skills
 
 De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engine-game`, `design-mini-engine-game-ui` en `mini-engine-ui` (MiniEngineUI, de rustige stijl van de demospellen als kant-en-klare kit).
@@ -113,6 +120,21 @@ me admin login
 me admin token create sander --label laptop --expires 90
 # geef de sleutel via een veilig kanaal door; sander draait daarna: me auth
 ```
+
+## Lokaal testen met me dev
+
+Je hebt geen engine nodig om je game te testen:
+
+```sh
+cd mijn-spel
+me dev
+```
+
+`me dev` controleert eerst `manifest.json` zoals `me game upload` dat doet en start dan een kleine server die de engine nabootst voor games met `runtime: "host"`: kamers, spelers en klaar zijn, state met versies, acties naar de spelleider, realtime, achievements en game-data (of een eigen set met `--set`). In de browser zie je de spelleider, het tv-scherm en de spelers naast elkaar. Elke stoel draait op een eigen poort, dus elke speler heeft een eigen sessie, net als op een eigen telefoon. Met **Speler toevoegen** schuift er iemand aan, met **Nieuwe kamer** begin je opnieuw.
+
+Pas je iets aan in de map, dan laden de stoelen opnieuw en blijft de kamer bestaan. Een fout in het manifest zie je in het overzicht en in de terminal. Gekregen achievements verschijnen in de terminal. Alles staat alleen in het geheugen; stoppen doe je met Ctrl+C.
+
+`me dev` is een nabootsing. Hij volgt het protocol van de engine en de tests van de CLI draaien hem met dezelfde stappen als de echte engine, maar test je game voor een avond met vrienden ook een keer op een echte server, bijvoorbeeld met `me game upload` en een testversie.
 
 ## Uploaden
 
