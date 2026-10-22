@@ -395,8 +395,10 @@ describe('me dev', () => {
 
     await writeGame(home, 'badges', manifest => ({ ...manifest, achievements: [{ id: 'Winnaar', title: 'Winnaar', description: 'Win.' }] }));
     const badges = await runMe(['dev', 'badges', '--no-open'], { home });
+    const badgesUpload = await runMe(['game', 'upload', join(home, 'badges'), '--dry-run'], { home });
     assert.equal(badges.code, 1);
-    assert.match(badges.stderr, /De engine weigert deze game: Geef elke achievement een uniek id/);
+    assert.match(badges.stderr, /manifest\.json: achievements\[0\]\.id moet 1 tot 48 kleine letters/);
+    assert.equal(badges.stderr, badgesUpload.stderr);
 
     await writeGame(home, 'schema', manifest => ({ ...manifest, default_settings: { prompt: 'x', allow_change: 'ja' } }));
     const schema = await runMe(['dev', 'schema', '--no-open'], { home });
