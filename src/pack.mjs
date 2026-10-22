@@ -7,6 +7,9 @@ const MiB = 1024 * 1024;
 export const LIMITS = { files: 4096, fileBytes: 2 * MiB, totalBytes: 10 * MiB, pathBytes: 255, depth: 32, bodyBytes: 16 * MiB };
 export const ID_PATTERN = /^[a-z0-9-]{1,48}$/;
 export const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
+export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,47}$/;
+export const MAX_ACHIEVEMENTS = 50;
+export const MAX_SET_KINDS = 4;
 
 export function compileIgnore(line) {
   let pattern = line.trim();
@@ -107,6 +110,55 @@ export function checkLimits(files) {
   return total;
 }
 
+const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const manifestText = (value, max) => value.trim() !== '' && [...value].length <= max && !/\p{Cc}/u.test(value);
+
+function checkEntries(manifest, field, { max, tooMany, shape, label, extra }) {
+  const entries = manifest[field];
+  if (entries === undefined) return;
+  if (!Array.isArray(entries)) throw new CliError(`manifest.json: ${field} moet een lijst zijn.`);
+  if (entries.length > max) throw new CliError(`manifest.json: ${tooMany} (nu ${entries.length}).`);
+  const seen = new Set();
+  entries.forEach((entry, index) => {
+    const at = `${field}[${index}]`;
+    if (!isObject(entry) || !['id', 'title', 'description'].every(name => typeof entry[name] === 'string')) {
+      throw new CliError(`manifest.json: ${at} moet een object zijn met ${shape}.`);
+    }
+    if (!ENTRY_ID_PATTERN.test(entry.id)) {
+      throw new CliError(`manifest.json: ${at}.id moet 1 tot 48 kleine letters, cijfers, _ of - zijn en met een letter of cijfer beginnen.`);
+    }
+    if (seen.has(entry.id)) throw new CliError(`manifest.json: het id ${entry.id} komt twee keer voor in ${field}.`);
+    seen.add(entry.id);
+    if (!manifestText(entry.title, 60) || !manifestText(entry.description, 160)) {
+      throw new CliError(`manifest.json: ${label} ${entry.id}: gebruik een titel van 1 tot 60 tekens en een beschrijving van 1 tot 160 tekens, zonder regeleinden.`);
+    }
+    extra?.(entry);
+  });
+}
+
+function checkDeclarations(manifest) {
+  checkEntries(manifest, 'achievements', {
+    max: MAX_ACHIEVEMENTS,
+    tooMany: `een game declareert maximaal ${MAX_ACHIEVEMENTS} achievements`,
+    shape: 'id, title en description (tekst)',
+    label: 'achievement',
+  });
+  checkEntries(manifest, 'set_kinds', {
+    max: MAX_SET_KINDS,
+    tooMany: `een game declareert maximaal ${MAX_SET_KINDS} soorten sets`,
+    shape: 'id, title, description (tekst) en schema',
+    label: 'set-soort',
+    extra(kind) {
+      if (!isObject(kind.schema)) throw new CliError(`manifest.json: set-soort ${kind.id}: schema moet een object zijn.`);
+    },
+  });
+}
+
+export function declared(manifest) {
+  const pick = entries => (Array.isArray(entries) ? entries.map(({ id, title, description }) => ({ id, title, description })) : []);
+  return { achievements: pick(manifest.achievements), set_kinds: pick(manifest.set_kinds) };
+}
+
 export function checkManifest(text, paths) {
   let manifest;
   try {
@@ -127,6 +179,7 @@ export function checkManifest(text, paths) {
   if (!Array.isArray(modes) || modes.length !== 1 || modes[0] !== 'moderator') {
     throw new CliError('manifest.json: host_modes moet ["moderator"] zijn voor geüploade games.');
   }
+  checkDeclarations(manifest);
   const required = ['host.html', 'player.html', ...(manifest.has_display ? ['display.html'] : [])];
   const missing = required.filter(name => !paths.includes(name));
   if (missing.length) throw new CliError(`Ontbrekende bestanden: ${missing.join(', ')}`);

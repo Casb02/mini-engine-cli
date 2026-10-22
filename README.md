@@ -7,7 +7,7 @@
 
 Met de Mini Engine CLI upload en beheer je je eigen partygames op een Mini Engine-server: een game maken vanuit het SDK-sjabloon, nieuwe versies uploaden, wisselen tussen versies en de game aan- of uitzetten. De eigenaar van de server beheert er ook de dev keys mee.
 
-De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer.
+De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig.
 
 ## Installeren
 
@@ -76,6 +76,13 @@ Elk commando heeft `--help`, bijvoorbeeld `me game upload --help`.
 
 `me game prune` en `me game delete` vragen om bevestiging. Zonder terminal (in een script) is `--yes` verplicht.
 
+### Lokaal testen
+
+| Commando | Wat |
+| --- | --- |
+| `me dev [map]` | Start een lokale, nagebootste engine voor je game en opent een overzicht met de spelleider, het scherm en de spelers naast elkaar. |
+| `me dev --players 4 --set bord.json` | Met vier spelers, en met `bord.json` als eigen set in plaats van `data.json`. |
+
 ### AI-skills
 
 De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engine-game`, `design-mini-engine-game-ui` en `mini-engine-ui` (MiniEngineUI, de rustige stijl van de demospellen als kant-en-klare kit).
@@ -114,6 +121,21 @@ me admin token create sander --label laptop --expires 90
 # geef de sleutel via een veilig kanaal door; sander draait daarna: me auth
 ```
 
+## Lokaal testen met me dev
+
+Je hebt geen engine nodig om je game te testen:
+
+```sh
+cd mijn-spel
+me dev
+```
+
+`me dev` controleert eerst `manifest.json` zoals `me game upload` dat doet en start dan een kleine server die de engine nabootst voor games met `runtime: "host"`: kamers, spelers en klaar zijn, state met versies, acties naar de spelleider, realtime, achievements en game-data (of een eigen set met `--set`). In de browser zie je de spelleider, het tv-scherm en de spelers naast elkaar. Elke stoel draait op een eigen poort, dus elke speler heeft een eigen sessie, net als op een eigen telefoon. Met **Speler toevoegen** schuift er iemand aan, met **Nieuwe kamer** begin je opnieuw.
+
+Pas je iets aan in de map, dan laden de stoelen opnieuw en blijft de kamer bestaan. Een fout in het manifest zie je in het overzicht en in de terminal. Gekregen achievements verschijnen in de terminal. Alles staat alleen in het geheugen; stoppen doe je met Ctrl+C.
+
+`me dev` is een nabootsing. Hij volgt het protocol van de engine en de tests van de CLI draaien hem met dezelfde stappen als de echte engine, maar test je game voor een avond met vrienden ook een keer op een echte server, bijvoorbeeld met `me game upload` en een testversie.
+
 ## Uploaden
 
 `me game upload` leest `id` en `version` uit `manifest.json`. Elke upload is een nieuwe versie, dus verhoog `version` (letters, cijfers en `. + _ -`, maximaal 64 tekens).
@@ -136,6 +158,33 @@ assets/**/*.wav
 Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` met `host_modes: ["moderator"]` gebruikt en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
 
 De eerste versie van een nieuwe game wordt meteen actief. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
+
+Na een geslaagde upload van een actieve versie toont de CLI waar je de game start: `<server>/home/new/<id>`. Bij een server ouder dan 0.5 is dat nog `/demo/new/<id>`.
+
+### Achievements en eigen sets
+
+Sinds Mini Engine 0.5 kan `manifest.json` twee lijsten bevatten:
+
+- `achievements`: hoogstens 50, elk met `id`, `title` en `description`.
+- `set_kinds`: hoogstens 4 soorten eigen sets, elk met `id`, `title`, `description` en `schema`.
+
+```json
+"achievements": [
+  { "id": "eerste-buzz", "title": "Eerste buzz", "description": "Druk als eerste op de knop." }
+],
+"set_kinds": [
+  {
+    "id": "bord",
+    "title": "Eigen bord",
+    "description": "Een eigen bord met categorieën en vragen.",
+    "schema": { "type": "object", "additionalProperties": false, "properties": { "titel": { "type": "string", "maxLength": 60 } } }
+  }
+]
+```
+
+Voor het uploaden controleert de CLI de vorm: een `id` heeft 1 tot 48 kleine letters, cijfers, `_` of `-`, begint met een letter of cijfer en komt per lijst één keer voor; een titel heeft 1 tot 60 tekens en een beschrijving 1 tot 160, zonder regeleinden; `schema` is een object. Of het schema zelf klopt, controleert de server bij de upload.
+
+Het overzicht na de upload en `me game upload --dry-run` tonen welke achievements en soorten sets de game heeft. Draait de server een versie ouder dan 0.5, dan krijg je voor het uploaden een waarschuwing: zo'n server negeert deze velden. De upload gaat wel door.
 
 ## Configuratie
 

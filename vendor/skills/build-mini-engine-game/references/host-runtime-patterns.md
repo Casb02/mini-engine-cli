@@ -170,7 +170,7 @@ const sendPick = value => run(() => client.action('pick', { value }));
 
 ## 7. Opening the shared display from the host page
 
-The room creator's session (saved by `/demo`) usually contains `display_token`. Open the display in a new tab from a click handler (open the window synchronously, or the popup is blocked):
+The room creator's session (saved by `/home`) usually contains `display_token`. Open the display in a new tab from a click handler (open the window synchronously, or the popup is blocked):
 
 ```js
 import { ApiClient, saveSession } from '/sdk/mini-engine.js';
@@ -194,4 +194,122 @@ Hide the button when `room.config?.display_enabled === false`. The token travels
 
 ## 8. Timers
 
-There are no server timers for custom games. The host tab runs `setTimeout` and publishes the phase change through `enqueue`. Device clocks differ, so publish a deadline as information but let the host decide when time is up; show countdowns as approximate.
+There are no server timers for custom games. The host tab runs `setTimeout` and publishes the phase change through `enqueue`. Device clocks differ, so publish a deadline as information but let the host decide when time is up; show countdowns as approximate. When the order of fast reactions matters (who pressed first), do not compare device clocks either: use the engine's realtime `ts` (§9).
+
+## 9. Realtime: buzzers and positions (engine 0.5+)
+
+`client.realtime` delivers small messages within milliseconds and never touches `room.version`, so it suits buzzers, reactions and live positions. Messages can be lost under load and have no order relative to snapshots. The rule: **realtime shows, state decides.** Whatever counts is decided by the host and published with `setState` through the queue.
+
+### Buzzer
+
+Every player emits a press. The engine adds `from` (who sent it) and `ts` (when the engine received it, in ms), so presses from different phones are compared on one clock. It is arrival time, not the moment of the tap: a phone on a slow connection loses a few milliseconds.
+
+```js
+// player.html side
+button('buzz').onclick = () => {
+  const room = client.room;
+  if (!room || room.public_state.phase !== 'open') return;
+  if (!client.realtime.emit('press', { question: room.public_state.question ?? null })) showError(new Error('Not connected. Try again in a moment.'));
+};
+```
+
+```js
+// host.html side
+/** @type {{ question: number | null, presses: { player_id: string, ts: number }[], timer?: ReturnType<typeof setTimeout> }} */
+const buzz = { question: null, presses: [] };
+client.realtime.on('press', (data, from, ts) => {
+  const room = client.room;
+  const question = data && typeof data === 'object' && !Array.isArray(data) && typeof data.question === 'number' ? data.question : null;
+  if (!room || room.public_state.phase !== 'open' || question !== room.public_state.question) return;
+  if (!from.player_id || !room.players.some(player => player.id === from.player_id)) return;
+  if (buzz.question !== question) Object.assign(buzz, { question, presses: [] });
+  if (buzz.presses.some(press => press.player_id === from.player_id)) return;
+  buzz.presses.push({ player_id: from.player_id, ts });
+  buzz.timer ??= setTimeout(() => enqueue(async () => {
+    buzz.timer = undefined;
+    const room = client.room;
+    if (!room || room.public_state.phase !== 'open' || room.public_state.question !== buzz.question) return;
+    const order = [...buzz.presses].sort((a, b) => a.ts - b.ts);
+    await publish(room, { ...room.public_state, phase: 'answering', buzzer: order[0]?.player_id, order }, secretsOf(room));
+  }), 150);
+});
+```
+
+- Accept a press only for the open question, from a seated player, once per player. Take the player and time from `from` and `ts`, never from `data`: `data` is client input, like action data.
+- Wait a short moment (100–200 ms) after the first press, then sort by `ts`. Two presses can reach the host in a different order than the engine received them.
+- The decision goes through `enqueue` and `setState`, so a reloaded host, a late display and the players all see the same winner. The collected presses live only in the host's memory; after a host reload, players simply press again.
+- A lost press looks like no press. Keep the buzz button usable while the question is open (the host ignores a second press from the same player) and show "Pressed" next to it.
+- The display can listen to the same `press` event to show the order at once, with the gap from the first press ("Sander +14 ms"), and switch to the published result when the snapshot arrives. Jeopardy, a built-in game, works this way.
+
+### Live positions
+
+Values are latest-wins per sender and key, and late joiners get the current ones. Use them for markers, cursors and karts.
+
+```js
+// player.html side: the SDK sends each key at most every 33 ms, however often you call set
+board.addEventListener('pointermove', event => {
+  if (event.buttons) client.realtime.set('pos', { x: event.offsetX / board.clientWidth, y: event.offsetY / board.clientHeight });
+});
+```
+
+```js
+// display.html side
+/** @type {Map<string, { x: number, y: number }>} */
+const positions = new Map();
+let frame = 0;
+client.realtime.onValue('pos', (value, from) => {
+  if (!from.player_id) return;
+  const point = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  if (point && typeof point.x === 'number' && typeof point.y === 'number') positions.set(from.player_id, { x: point.x, y: point.y });
+  else positions.delete(from.player_id);
+  frame ||= requestAnimationFrame(() => { frame = 0; draw(positions); });
+});
+```
+
+- Send fractions of the board (0–1), not pixels: every screen has another size.
+- One key sent at full speed uses about 30 of the 60 realtime messages per second a connection may send. Keep it to one moving key per player, or raise the interval with `new MiniEngine({ ...session, realtime: { setInterval: 66 } })`. If the `throttled` event fires, send less.
+- `onValue` also fires for the values that were already there when the page connected or reconnected. A player who leaves comes back as `null` for each of their keys.
+- At a new round the host calls `client.realtime.reset()` to clear everyone's values.
+- When a position decides something (who reached the finish first), the host checks it with `client.realtime.value(playerId, 'pos')` or the player sends an action, and the host publishes the outcome with `setState`. Validate the value like action data.
+
+## 10. Achievements (engine 0.5+)
+
+Declare them in `manifest.json` (rules in `manifest-and-settings.md`):
+
+```json
+"achievements": [
+  { "id": "drie-keer-raak", "title": "Drie keer raak", "description": "Win drie rondes in één spel." }
+]
+```
+
+The host awards them when the rules decide, for example right after publishing the final result:
+
+```js
+/** Guests cannot earn achievements; a refusal never stops the game. @param {Room} room @param {GameState} game */
+function awardWinners(room, game) {
+  for (const player of room.players) {
+    if (!player.account_id || (game.scores[player.id] ?? 0) < 3) continue;
+    client.award(player.id, 'drie-keer-raak').catch(error => {
+      if (!['not_eligible', 'rate_limit'].includes(error.code)) showError(error);
+    });
+  }
+}
+```
+
+- Only the host awards, only while the room is `running` or `finished`: award before `lifecycle('lobby')`.
+- Skip players whose `account_id` is `null`: guests never earn achievements.
+- The engine also answers `not_eligible` when the room was created without logging in, or when the player's account is the host's own account (no awards to yourself). The snapshot does not show whether the host was logged in, so treat `not_eligible` as normal and never show it as an error.
+- Awarding the same achievement again does nothing and still acks, so awarding at every finish is fine. At most 30 awards per room per minute: award only what was earned.
+- Only ids declared in the release the room started with work (`achievement_unknown` otherwise). After adding one, upload and activate the release, then create a new room.
+- The account page lists these awards apart from server-verified ones, under "Toegekend door eigen spellen". Make achievements about how someone played, not about anything that needs a referee you cannot trust.
+
+Celebrate on every screen: the first time a player earns an achievement, every connection in the room receives the `achievement` event.
+
+```js
+client.on('achievement', ({ player_id, achievement }) => {
+  const name = client.room?.players.find(player => player.id === player_id)?.name ?? 'A player';
+  showNotice(`${name} earned ${achievement.title}`);
+});
+```
+
+Like realtime, this event can be lost and is not in the snapshot: keep it a short, calm moment and never the only place where something important appears. With MiniEngineUI, see its achievement note.

@@ -40,6 +40,24 @@ async function bump(dir, version) {
   await writeFile(path, JSON.stringify(manifest));
 }
 
+async function declare(dir, fields) {
+  const path = join(dir, 'manifest.json');
+  await writeFile(path, JSON.stringify({ ...JSON.parse(await readFile(path, 'utf8')), ...fields }));
+}
+
+const ACHIEVEMENTS = [
+  { id: 'eerste-buzz', title: 'Eerste buzz', description: 'Druk als eerste op de knop.' },
+  { id: 'foutloos', title: 'Foutloos', description: 'Speel een hele ronde zonder fout antwoord.' },
+];
+const SET_KINDS = [
+  {
+    id: 'bord',
+    title: 'Eigen bord',
+    description: 'Vijf categorieën met elk vijf vragen.',
+    schema: { type: 'object', additionalProperties: false, properties: { titel: { type: 'string', maxLength: 60 } }, required: ['titel'] },
+  },
+];
+
 async function uploaded(versions, slug = 'kwis') {
   const dir = await newGame(slug);
   for (const version of versions) {
@@ -197,7 +215,7 @@ describe('game', () => {
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /Geüpload: kwis 0\.1\.0 naar/);
     assert.match(result.stdout, /Actief {5}ja/);
-    assert.match(result.stdout, /Spelen: .*\/demo\/new\/kwis/);
+    assert.match(result.stdout, /Spelen: .*\/home\/new\/kwis/);
     const request = fake.state.requests.find(r => r.method === 'POST');
     assert.equal(request.path, '/api/v1/dev/games/kwis/versions');
     assert.equal(request.body.activate, undefined);
@@ -257,6 +275,98 @@ describe('game', () => {
     assert.equal(data.version, '0.1.0');
     assert.ok(!data.files.some(file => file.path === 'jsconfig.json' || file.path.startsWith('types/')));
     assert.equal(fake.state.requests.length, before);
+  });
+
+  test('upload --dry-run lists declared achievements and set kinds', async () => {
+    const dir = await newGame();
+    await declare(dir, { achievements: ACHIEVEMENTS, set_kinds: SET_KINDS });
+    const before = fake.state.requests.length;
+    const text = await me(['game', 'upload', 'kwis', '--dry-run']);
+    assert.equal(text.code, 0, text.stderr);
+    assert.match(text.stdout, /\n\nACHIEVEMENT\s+TITEL\neerste-buzz\s+Eerste buzz\nfoutloos\s+Foutloos\n\nSOORT SET\s+TITEL\nbord\s+Eigen bord\n\nNiets geüpload/);
+    const data = (await me(['game', 'upload', 'kwis', '--dry-run', '--json'])).json();
+    assert.deepEqual(data.achievements, ACHIEVEMENTS);
+    assert.deepEqual(data.set_kinds, SET_KINDS.map(({ id, title, description }) => ({ id, title, description })));
+    assert.equal(fake.state.requests.length, before);
+    await newGame('zonder');
+    const none = await me(['game', 'upload', 'zonder', '--dry-run']);
+    assert.equal(none.code, 0, none.stderr);
+    assert.doesNotMatch(none.stdout, /ACHIEVEMENT|SOORT SET/);
+    const empty = (await me(['game', 'upload', 'zonder', '--dry-run', '--json'])).json();
+    assert.deepEqual([empty.achievements, empty.set_kinds], [[], []]);
+  });
+
+  test('upload summary lists achievements and set kinds and links to /home', async () => {
+    const dir = await newGame();
+    await declare(dir, { achievements: ACHIEVEMENTS, set_kinds: SET_KINDS });
+    const result = await authed(['game', 'upload', 'kwis']);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, '');
+    assert.match(result.stdout, /Actief {5}ja\n\nACHIEVEMENT\s+TITEL\neerste-buzz\s+Eerste buzz\nfoutloos\s+Foutloos\n\nSOORT SET\s+TITEL\nbord\s+Eigen bord\n\nSpelen: http:\/\/127\.0\.0\.1:\d+\/home\/new\/kwis$/m);
+    const sent = JSON.parse(Buffer.from(fake.state.requests.find(r => r.method === 'POST').body.files['manifest.json'], 'base64').toString());
+    assert.deepEqual(sent.set_kinds, SET_KINDS);
+    await bump(dir, '0.2.0');
+    const json = await authed(['game', 'upload', 'kwis', '--json']);
+    const data = json.json();
+    assert.deepEqual(data.achievements.map(item => item.id), ['eerste-buzz', 'foutloos']);
+    assert.deepEqual(data.set_kinds.map(item => item.id), ['bord']);
+    assert.deepEqual(data.warnings, []);
+  });
+
+  test('upload warns before uploading achievements or set kinds to a server older than 0.5', async () => {
+    fake.state.version = '0.4.4';
+    const dir = await newGame();
+    await declare(dir, { achievements: ACHIEVEMENTS, set_kinds: SET_KINDS });
+    const result = await authed(['game', 'upload', 'kwis']);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stderr, /^Let op: http:\/\/127\.0\.0\.1:\d+ draait Mini Engine 0\.4\.4, die achievements en set_kinds in manifest\.json negeert\. Die werken pas vanaf Mini Engine 0\.5\.\n$/);
+    assert.match(result.stdout, /Spelen: .*\/demo\/new\/kwis/);
+    const paths = fake.state.requests.map(r => `${r.method} ${r.path}`);
+    assert.ok(paths.lastIndexOf('GET /api/health') < paths.indexOf('POST /api/v1/dev/games/kwis/versions'));
+
+    await bump(dir, '0.2.0');
+    await declare(dir, { set_kinds: [] });
+    const json = await authed(['game', 'upload', 'kwis', '--json']);
+    assert.equal(json.code, 0, json.stdout);
+    assert.equal(json.stderr, '');
+    assert.match(json.json().warnings[0], /die achievements in manifest\.json negeert/);
+
+    await bump(dir, '0.3.0');
+    await declare(dir, { achievements: [] });
+    const plain = await authed(['game', 'upload', 'kwis']);
+    assert.equal(plain.stderr, '');
+
+    fake.state.version = '0.5.0';
+    await bump(dir, '0.4.0');
+    await declare(dir, { achievements: ACHIEVEMENTS });
+    const current = await authed(['game', 'upload', 'kwis']);
+    assert.equal(current.stderr, '');
+  });
+
+  test('upload refuses malformed achievements and set kinds before contacting the server', async () => {
+    const dir = await newGame();
+    const many = count => Array.from({ length: count }, (_, i) => ({ ...SET_KINDS[0], id: `soort-${i}` }));
+    const cases = [
+      [{ achievements: {} }, /achievements moet een lijst zijn/],
+      [{ achievements: [ACHIEVEMENTS[0], { ...ACHIEVEMENTS[1], id: 'eerste-buzz' }] }, /het id eerste-buzz komt twee keer voor in achievements/],
+      [{ achievements: [{ ...ACHIEVEMENTS[0], id: '-buzz' }] }, /achievements\[0\]\.id moet 1 tot 48 kleine letters/],
+      [{ achievements: [{ id: 'buzz', title: 'Buzz' }] }, /achievements\[0\] moet een object zijn met id, title en description/],
+      [{ achievements: [{ ...ACHIEVEMENTS[0], title: 'x'.repeat(61) }] }, /achievement eerste-buzz: gebruik een titel van 1 tot 60 tekens/],
+      [{ achievements: Array.from({ length: 51 }, (_, i) => ({ ...ACHIEVEMENTS[0], id: `a${i}` })) }, /maximaal 50 achievements \(nu 51\)/],
+      [{ set_kinds: many(5) }, /maximaal 4 soorten sets \(nu 5\)/],
+      [{ set_kinds: [{ ...SET_KINDS[0], schema: [] }] }, /set-soort bord: schema moet een object zijn/],
+      [{ set_kinds: [{ ...SET_KINDS[0], description: '  ' }] }, /set-soort bord: gebruik een titel/],
+    ];
+    for (const [fields, message] of cases) {
+      await declare(dir, { achievements: [], set_kinds: [], ...fields });
+      const result = await authed(['game', 'upload', 'kwis']);
+      assert.equal(result.code, 1, JSON.stringify(fields).slice(0, 80));
+      assert.match(result.stderr, message);
+    }
+    assert.equal(fake.state.requests.length, 0);
+    await declare(dir, { set_kinds: many(4), achievements: Array.from({ length: 50 }, (_, i) => ({ ...ACHIEVEMENTS[0], id: `a${i}` })) });
+    const fits = await authed(['game', 'upload', 'kwis', '--dry-run']);
+    assert.equal(fits.code, 0, fits.stderr);
   });
 
   test('list and versions', async () => {
@@ -388,11 +498,11 @@ describe('setup', () => {
     assert.equal(result.code, 0, result.stdout + result.stderr);
     const data = result.json();
     assert.equal(data.server, fake.url);
-    assert.equal(data.server_version, '0.4.0');
+    assert.equal(data.server_version, fake.state.version);
     assert.equal(data.account.username, 'sander');
     assert.equal(data.skills, null);
     assert.equal(data.game.id, 'eerste');
-    assert.deepEqual(data.next, ['cd eerste', 'me game upload', 'me game list']);
+    assert.deepEqual(data.next, ['cd eerste', 'me dev', 'me game upload', 'me game list']);
     assert.deepEqual(JSON.parse(await readFile(configFile(), 'utf8')), { server: fake.url, token: key });
     await assert.rejects(stat(join(home, '.claude')));
   });
@@ -402,7 +512,7 @@ describe('setup', () => {
     const result = await runMe(['setup'], { home, input });
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stderr, /Ingelogd als Sander/);
-    assert.match(result.stdout, /Klaar\. Volgende stappen:\n {2}cd mijn-quiz\n {2}me game upload\n {2}me game list/);
+    assert.match(result.stdout, /Klaar\. Volgende stappen:\n {2}cd mijn-quiz\n {2}me dev\n {2}me game upload\n {2}me game list/);
     assert.ok((await stat(join(home, '.claude', 'skills', 'build-mini-engine-game'))).isDirectory());
     assert.ok((await stat(join(home, 'mijn-quiz', 'manifest.json'))).isFile());
 

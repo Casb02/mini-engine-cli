@@ -1,13 +1,36 @@
 import { relative, resolve } from 'node:path';
-import { enc } from '../api.mjs';
+import { enc, request } from '../api.mjs';
 import { CliError, usageError } from '../errors.mjs';
 import { formatBytes, formatDate, gameStatus, table } from '../format.mjs';
-import { packGame } from '../pack.mjs';
+import { declared, packGame } from '../pack.mjs';
 import { newestFirst, selectPrune } from '../prune.mjs';
 import { scaffoldGame } from '../scaffold.mjs';
 
 const shortHash = hash => (hash ? String(hash).replace(/^sha256:/, '').slice(0, 12) : '-');
 const releaseUrl = (id, version) => `/games/${enc(id)}/versions/${enc(version)}`;
+
+function declaredLines({ achievements, set_kinds }) {
+  const lines = [];
+  if (achievements.length) lines.push('', table(['ACHIEVEMENT', 'TITEL'], achievements.map(item => [item.id, item.title])));
+  if (set_kinds.length) lines.push('', table(['SOORT SET', 'TITEL'], set_kinds.map(item => [item.id, item.title])));
+  return lines;
+}
+
+async function serverVersion(server) {
+  try {
+    const health = await request(server, '/api/health', { timeoutMs: 10_000 });
+    return typeof health?.version === 'string' ? health.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function olderThan(version, major, minor) {
+  const parts = /^(\d+)\.(\d+)/.exec(version ?? '');
+  if (!parts) return false;
+  const [have, sub] = [Number(parts[1]), Number(parts[2])];
+  return have < major || (have === major && sub < minor);
+}
 
 function displayPath(cwd, target) {
   const rel = relative(cwd, target);
@@ -76,7 +99,7 @@ export const gameCommands = [
       const { directory, files } = await scaffoldGame(slug, target);
       const shown = displayPath(ctx.cwd, directory);
       const { token } = await ctx.settings();
-      const next = [...(token ? [] : ['me auth']), `cd ${shown}`, 'me game upload'];
+      const next = [`cd ${shown}`, 'me dev', ...(token ? [] : ['me auth']), 'me game upload'];
       return {
         data: { id: slug, directory, files },
         text: [`Game ${slug} gemaakt in ${shown} (${files.length} bestanden).`, '', 'Volgende stappen:', ...next.map(line => `  ${line}`)].join('\n'),
@@ -95,6 +118,9 @@ export const gameCommands = [
       '',
       'De eerste versie van een game wordt meteen actief. Latere versies alleen met --activate;',
       'anders activeer je ze later met me game activate. Verhoog version in manifest.json voor elke upload.',
+      '',
+      'De velden achievements en set_kinds in manifest.json worden vooraf gecontroleerd en in het overzicht getoond.',
+      'Ze werken vanaf Mini Engine 0.5; bij een oudere server krijg je eerst een waarschuwing.',
     ].join('\n'),
     options: { activate: { type: 'boolean' }, 'dry-run': { type: 'boolean' } },
     optionHelp: [
@@ -106,18 +132,28 @@ export const gameCommands = [
     async run(ctx) {
       const dir = ctx.args[0] ?? '.';
       const pack = await packGame(resolve(ctx.cwd, dir));
+      const declarations = declared(pack.manifest);
       if (ctx.flags['dry-run']) {
         return {
-          data: { dry_run: true, id: pack.id, version: pack.version, size: pack.totalBytes, files: pack.files },
+          data: { dry_run: true, id: pack.id, version: pack.version, size: pack.totalBytes, files: pack.files, ...declarations },
           text: [
             `${pack.id} ${pack.version}: ${pack.files.length} bestanden, ${formatBytes(pack.totalBytes)}`,
             table(['BESTAND', 'GROOTTE'], pack.files.map(file => [file.path, formatBytes(file.size)])),
+            ...declaredLines(declarations),
             '',
             'Niets geüpload (--dry-run).',
           ].join('\n'),
         };
       }
-      const { server } = await ctx.settings();
+      const { server, token } = await ctx.settings();
+      const engineVersion = token ? await serverVersion(server) : null;
+      const beforeHome = olderThan(engineVersion, 0, 5);
+      const used = ['achievements', 'set_kinds'].filter(field => declarations[field].length);
+      const warnings = [];
+      if (used.length && beforeHome) {
+        warnings.push(`Let op: ${server} draait Mini Engine ${engineVersion}, die ${used.join(' en ')} in manifest.json negeert. Die werken pas vanaf Mini Engine 0.5.`);
+      }
+      if (!ctx.json) warnings.forEach(warning => ctx.warn(warning));
       const body = { files: pack.encoded };
       if (ctx.flags.activate) body.activate = true;
       const { game, release } = await ctx.dev(`/games/${enc(pack.id)}/versions`, { method: 'POST', body, timeoutMs: 120_000 });
@@ -127,12 +163,13 @@ export const gameCommands = [
         `  Grootte    ${formatBytes(release.size)}`,
         `  Hash       ${release.content_hash}`,
         `  Actief     ${release.active ? 'ja' : `nee (actief is ${game.active_version ?? 'geen'})`}`,
+        ...declaredLines(declarations),
         '',
       ];
       if (!release.active) lines.push(`Activeren: me game activate ${game.id} ${release.version}`);
       else if (game.blocked || !game.enabled) lines.push(statusLine(game));
-      else lines.push(`Spelen: ${server}/demo/new/${game.id}`);
-      return { data: { game, release }, text: lines.join('\n') };
+      else lines.push(`Spelen: ${server}${beforeHome ? '/demo' : '/home'}/new/${game.id}`);
+      return { data: { game, release, ...declarations, warnings }, text: lines.join('\n') };
     },
   },
   {

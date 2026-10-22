@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>me dev</title>
+    <link rel="icon" type="image/svg+xml" href="/__me/favicon.svg" />
+    <link rel="stylesheet" href="/__me/launcher.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <p class="brand"><span class="wordmark">miniengine<span class="spark" aria-hidden="true">✳</span></span><span class="tag">dev</span></p>
+      <div class="game">
+        <h1 id="title">Even laden…</h1>
+        <p id="meta"></p>
+      </div>
+      <div class="actions">
+        <button id="add-player" class="button" type="button">Speler toevoegen</button>
+        <button id="new-room" class="button" type="button">Nieuwe kamer</button>
+      </div>
+    </header>
+    <section id="problem" class="problem" role="alert" hidden>
+      <h2>De game heeft een fout</h2>
+      <pre id="problem-text"></pre>
+      <p>De stoelen spelen door met de laatste goede versie. Na het herstellen laden ze vanzelf opnieuw.</p>
+    </section>
+    <p id="notice" class="notice" role="status" hidden></p>
+    <main id="seats" class="seats" aria-label="Stoelen"></main>
+    <script type="module" src="/__me/launcher.js"></script>
+  </body>
+</html>
