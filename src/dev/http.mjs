@@ -142,9 +142,12 @@ export function createApp({ engine, project, session, launcherPort }) {
   }
 
   function checkOrigin(req) {
+    const host = req.headers.host ?? '';
+    if (!/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/i.test(host)) {
+      throw new EngineError(421, 'host_forbidden', 'me dev beantwoordt alleen verzoeken aan 127.0.0.1 of localhost.');
+    }
     const origin = req.headers.origin;
     if (origin === undefined) return;
-    const host = req.headers.host ?? '';
     if (origin !== `http://${host}` && origin !== `https://${host}`) {
       throw new EngineError(403, 'origin_forbidden', 'Deze browser-origin is niet toegestaan.');
     }

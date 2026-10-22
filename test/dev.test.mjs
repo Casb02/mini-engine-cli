@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -498,6 +499,15 @@ describe('me dev', () => {
     assert.notEqual(added.room.code, credential.code);
     const refused = await fetch(`${run.url}/__me/players`, { method: 'POST', headers: { origin: 'https://example.com' } });
     assert.equal(refused.status, 403);
+    const port = new URL(run.url).port;
+    for (const host of [`rebound.example:${port}`, `127.0.0.1.example:${port}`]) {
+      const status = await new Promise((resolve, reject) => {
+        const req = httpRequest({ host: '127.0.0.1', port, path: '/', headers: { host } }, response => { response.resume(); resolve(response.statusCode); });
+        req.on('error', reject);
+        req.end();
+      });
+      assert.equal(status, 421, `a page reached through ${host} must not be served`);
+    }
   });
 
   test('reloads the seats after a change and reports manifest errors without stopping', async () => {
