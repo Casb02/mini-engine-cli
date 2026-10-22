@@ -34,7 +34,7 @@ export function gameFiles(slug) {
     description: 'A ready-to-play yes/no vote game. Customize the question and start voting.',
     version: '0.1.0',
     runtime: 'host',
-    host_modes: ['playing', 'moderator'],
+    host_modes: ['playing', 'tv'],
     default_host_mode: 'playing',
     min_players: 1,
     max_players: 24,
@@ -91,13 +91,13 @@ export function gameFiles(slug) {
     'types/mini-engine.d.ts': sdkDeclarations,
     'README.md': `# ${title}
 
-A trusted **host-runtime** vote game for Mini Engine 0.5.1 or later. The host tab validates player actions and publishes state; keep it online during play. By default the room's creator plays along with a seat of their own; a room created in moderator mode has a host who only leads. Guests need no accounts. All roles see the same vote totals; players can optionally change their vote.
+A trusted **host-runtime** vote game for Mini Engine 0.5.2 or later. The host tab validates player actions and publishes state; keep it online during play. By default everyone plays, the room's creator too; pick TV to let this screen show the vote while everyone votes on their phone. Guests need no accounts. All roles see the same vote totals; players can optionally change their vote.
 
 ## Run in five minutes
 
 1. Put this whole directory at games/${slug}/ in your Mini Engine checkout.
 2. Restart the engine from its project root (cargo run). If your server uses another games directory, put it there instead.
-3. Open the engine's /home, select **${title}**, and create a room. You play along; pick moderator in the form to only lead.
+3. Open the engine's /home, select **${title}**, and create a room. Everyone plays, you too ("Iedereen doet mee"); pick TV in the form to make this screen show the vote instead.
 4. Join from another browser/device using the room code, then click **I'm ready**. Your own seat as host is always ready.
 5. On the host, click **Start voting**. Vote on the host and player screens; optionally open a display.
 
@@ -194,6 +194,8 @@ if (!session) {
     const votes = room.players.map(player => state.votes[player.id]).filter(value => typeof value === 'boolean');
     const mine = room.you.player_id ? state.votes[room.you.player_id] : undefined;
     const me = meIn(room);
+    // "tv": this page is the shared screen, so the totals are shown large.
+    document.body.dataset.mode = room.config?.host_mode ?? '';
     $('code').textContent = room.code;
     $('prompt').textContent = room.settings.prompt;
     $('status').textContent = !client.connected ? 'Reconnecting…' : room.status === 'lobby'
@@ -214,7 +216,7 @@ if (!session) {
     button('reset').disabled = busy || !client.connected || room.status !== 'finished';
     $('players').replaceChildren(...room.players.map(player => {
       const item = document.createElement('li');
-      item.textContent = player.name + (player.id === room.host_player_id ? ' · host' : '') + (player.ready ? ' · ready' : '') + (player.connected ? '' : ' · offline');
+      item.textContent = player.name + (player.ready ? ' · ready' : '') + (player.connected ? '' : ' · offline');
       return item;
     }));
   }
@@ -265,4 +267,6 @@ button:disabled { opacity: .45; cursor: default; }
 #error { color: light-dark(#a51e1e, #ffb0b0); min-height: 1.5em; }
 li { margin: .5rem 0; }
 [hidden] { display: none !important; }
+body[data-mode="tv"] main { max-width: 72rem; }
+body[data-mode="tv"] .results strong { font-size: clamp(6rem, 18vw, 14rem); }
 `;

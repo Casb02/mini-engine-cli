@@ -161,9 +161,14 @@ De eerste versie van een nieuwe game wordt meteen actief. Latere versies worden 
 
 Na een geslaagde upload van een actieve versie toont de CLI waar je de game start: `<server>/home/new/<id>`. Bij een server ouder dan 0.5 is dat nog `/demo/new/<id>`.
 
-### Spelleider speelt mee
+### Iedereen doet mee, of TV
 
-Met `host_modes: ["moderator", "playing"]` kiest de maker van een kamer of hij alleen leidt of ook meespeelt; `default_host_mode` bepaalt wat het formulier voorstelt. Speelt de spelleider mee (sinds Mini Engine 0.5.1), dan heeft hij met dezelfde sleutel ook een stoel: `player_id` in de credential en `host_player_id` in elke snapshot (anders `null`). Die stoel telt mee voor `max_players`, staat altijd klaar en houdt de start nooit tegen. De hostpagina blijft scheidsrechter: hij stuurt geen acties, maar past zijn eigen zet direct toe met `setState`. Op zijn eigen stoel kan hij ook achievements krijgen. Een nieuwe game van `me game new` speelt standaard mee (`["playing", "moderator"]`); zonder `host_modes` blijft het `["moderator"]`.
+Een gezelschapsspel (bord, kaart, dobbel, tekenen) zet `host_modes: ["playing", "tv"]` met `"playing"` als standaard. Het formulier toont dan twee keuzes:
+
+- **Iedereen doet mee** (`playing`, sinds Mini Engine 0.5.1): de maker heeft met dezelfde sleutel ook een stoel, met `player_id` in de credential en `host_player_id` in elke snapshot. Die stoel telt mee voor `max_players`, staat altijd klaar en houdt de start nooit tegen. De hostpagina ziet eruit als een telefoon van een speler, met alleen wat het spel van de maker nodig heeft (Start, Nieuw spel). Hij blijft scheidsrechter: hij stuurt geen acties, maar past zijn eigen zet direct toe met `setState`. Op zijn eigen stoel kan hij ook achievements krijgen.
+- **TV** (`tv`, sinds 0.5.2): het apparaat dat de kamer maakt, is de tv. Het toont het spel, heeft geen stoel (`player_id` en `host_player_id` zijn `null`) en speelt niet mee; iedereen speelt op de telefoon. De eigenaar van de tv kan op de eigen telefoon achievements krijgen.
+
+`moderator` (*Ik, als spelleider*) is voor een spel met een leider die niet meespeelt, zoals een quizmaster. Een nieuwe game van `me game new` biedt `["playing", "tv"]`; zonder `host_modes` blijft het `["moderator"]`.
 
 ### Icoon
 

@@ -31,7 +31,7 @@ async function seat(session, { width = 390, height = 844 } = {}) {
 }
 // Achievements only reach logged-in seats: give post() account tokens as in verify-and-troubleshoot.md, "Achievements".
 try {
-  // The host plays along (the scaffold's default); use host_mode 'moderator' and drop `name` to test a host who only leads.
+  // Everyone plays, the host too (the scaffold's default); use host_mode 'tv' and drop `name` to test the TV, whose host page is the shared screen.
   const host = await post('/api/v1/rooms', { game_id: gameId, name: 'Hessel', config: { host_mode: 'playing', display_enabled: true } });
   const players = [await post(`/api/v1/rooms/${host.code}/join`, { name: 'Dani' }), await post(`/api/v1/rooms/${host.code}/join`, { name: 'Sander' })];
   const hostSeat = await seat(host, { width: 1280, height: 800 });

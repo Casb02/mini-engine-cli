@@ -34,7 +34,7 @@ Role pages are served from `/api/v1/games/<id>/<role>`, so reference assets with
   "description": "Kies stiekem een getal; wie het dichtst bij 2/3 van het gemiddelde zit, wint.",
   "version": "0.1.0",
   "runtime": "host",
-  "host_modes": ["playing", "moderator"],
+  "host_modes": ["playing", "tv"],
   "default_host_mode": "playing",
   "icon": "assets/icon.svg",
   "supports_late_join": false,
@@ -63,23 +63,24 @@ Role pages are served from `/api/v1/games/<id>/<role>`, so reference assets with
 | `min_players` / `max_players` | `1 ≤ min ≤ max ≤ 100`. A room's capacity is chosen at creation between them (default `min(max_players, 24)`). `min_players` is **not** enforced at start — check it in your host UI if it matters. Both count the host's seat when the host plays along. |
 | `has_display` | `true` requires `display.html`. `false` makes rooms with `display_enabled` invalid. |
 | `runtime` | `"host"` (default). `"server"` is only for built-in Rust games. |
-| `host_modes` / `default_host_mode` | For `runtime: "host"`: any non-empty subset of `["playing", "moderator"]`, no duplicates; `default_host_mode` must be in it. Omitted → `["moderator"]` / `"moderator"`. `hostless` is refused (`Invalid runtime or unsupported host modes.`): a browser-host game needs its host tab as referee. Recommended: `["playing", "moderator"]` with `"playing"`, or only `["moderator"]` for a neutral leader. `playing` needs engine 0.5.1+. |
+| `host_modes` / `default_host_mode` | For `runtime: "host"`: any non-empty subset of `["playing", "tv", "moderator"]`, no duplicates; `default_host_mode` must be in it. Omitted → `["moderator"]` / `"moderator"`. `hostless` is refused (`Invalid runtime or unsupported host modes.`): a browser-host game needs its host tab as referee. Party games (board, card, dice, drawing): `["playing", "tv"]` with `"playing"`. A neutral leader (quiz master): `["moderator"]`, optionally with `"playing"`. `playing` needs engine 0.5.1+, `tv` 0.5.2+. |
 | `icon` | Optional (0.5.1+): `"assets/<name>.svg"`. Absent → the engine's own mark (the game's initial on a tile). Rules below. |
 | `supports_late_join` | Default `true`. Set `false` unless the host logic handles players appearing during `running`. The room still has to opt in with `allow_late_join`. |
 | `default_settings` | Must validate against `settings_schema`. |
 | `achievements` | Optional (0.5+), ≤ 50: `[{id, title, description}]`. `id` `^[a-z0-9][a-z0-9_-]{0,47}$`, unique; `title` 1–60 chars; `description` 1–160 chars; no control characters. Public through `GET /api/v1/games`. The host awards them (see `host-runtime-patterns.md`). |
 | `set_kinds` | Optional (0.5+), ≤ 4: `[{id, title, description, schema}]`. `id`, `title` and `description` follow the achievement rules; `schema` uses the set schema dialect below. Players save sets of these kinds on their account and pick one for a room. |
 
-The engine reads only the fields above. Anything else in `manifest.json` is ignored without a warning, so a misspelt field (`achievement`, `setKinds`) silently does nothing: check `GET /api/v1/games/<id>` after a restart. An engine older than 0.5 ignores `achievements` and `set_kinds` the same way; the game still loads there, without them. An engine older than 0.5.1 ignores `icon` but refuses `playing` in `host_modes` for a host game.
+The engine reads only the fields above. Anything else in `manifest.json` is ignored without a warning, so a misspelt field (`achievement`, `setKinds`) silently does nothing: check `GET /api/v1/games/<id>` after a restart. An engine older than 0.5 ignores `achievements` and `set_kinds` the same way; the game still loads there, without them. An engine older than 0.5.1 ignores `icon` but refuses `playing` in `host_modes` for a host game; an engine older than 0.5.2 refuses `tv`.
 
 ## host_modes: who the creator is
 
 | Mode | The creator | Snapshot |
 | --- | --- | --- |
-| `playing` (recommended default) | Host **and** player: one credential with `role: "host"` and a `player_id`, named by the create form's name field. The seat is in `room.players`, always counts as ready, cannot be kicked and cannot `leave`. | `room.you.player_id` and `room.host_player_id` are that seat. |
-| `moderator` | Host without a seat: leads and referees, never plays. | `room.you.player_id` and `room.host_player_id` are `null`. |
+| `playing` — "Iedereen doet mee" (default for party games) | Host **and** player: one credential with `role: "host"` and a `player_id`, named by the create form's name field. The seat is in `room.players`, always counts as ready, cannot be kicked and cannot `leave`. The host page shows the **player's page** plus only what the game needs from the creator (Start, New game, game-specific steps). | `room.you.player_id` and `room.host_player_id` are that seat. |
+| `tv` — "TV" (0.5.2+) | Host without a seat: the device that creates the room is the TV. It shows the game and does not play; everyone plays on their phone. The host page shows the **shared screen** (QR and code in the lobby, the game large) plus Start and New game. The form asks no name and switches the separate shared screen off. The TV's account may earn achievements on a phone seat. | `room.you.player_id` and `room.host_player_id` are `null`. |
+| `moderator` — "Ik, als spelleider" | Host without a seat: a person who leads and referees, never plays (a quiz master). The host page is a console. | `room.you.player_id` and `room.host_player_id` are `null`. |
 
-The person creating the room picks one of the declared modes in the create form; the room keeps it (`room.config.host_mode`). Support both in the host page unless the manifest declares one. Either way the host connection cannot send `action`s: the host applies its own moves with `setState` (see `host-runtime-patterns.md`, "The host plays along").
+The person creating the room picks one of the declared modes in the create form; the room keeps it (`room.config.host_mode`). The host page reads that mode and mounts the matching view. Either way the host connection cannot send `action`s: the host applies its own moves with `setState` (see `host-runtime-patterns.md`, "The host plays along").
 
 ## icon (0.5.1+)
 

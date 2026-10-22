@@ -188,7 +188,10 @@ describe('packing', () => {
     ok({ host_modes: ['moderator', 'playing'], default_host_mode: 'playing' });
     ok({ host_modes: ['playing', 'moderator'], default_host_mode: 'moderator' });
     ok({ host_modes: ['moderator', 'playing'], default_host_mode: undefined });
-    refused({ host_modes: ['hostless'], default_host_mode: 'hostless' }, /host_modes moet een lijst zijn met "moderator", "playing" of allebei\. "hostless" is alleen voor ingebouwde games\./);
+    // 0.5.2: party games offer "Iedereen doet mee" and "TV".
+    assert.deepEqual(ok({ host_modes: ['playing', 'tv'], default_host_mode: 'playing' }).host_modes, ['playing', 'tv']);
+    ok({ host_modes: ['tv'], default_host_mode: 'tv' });
+    refused({ host_modes: ['hostless'], default_host_mode: 'hostless' }, /host_modes moet een lijst zijn met "playing", "tv" en\/of "moderator"\. "hostless" is alleen voor ingebouwde games\./);
     refused({ host_modes: ['moderator', 'hostless'] }, /"hostless" is alleen voor ingebouwde games/);
     refused({ host_modes: [] }, /host_modes moet een lijst zijn/);
     refused({ host_modes: 'playing' }, /host_modes moet een lijst zijn/);
@@ -287,7 +290,7 @@ describe('packing', () => {
     const pack = await packGame(directory);
     assert.equal(pack.id, 'ja-of-nee');
     assert.equal(pack.manifest.runtime, 'host');
-    assert.deepEqual(pack.manifest.host_modes, ['playing', 'moderator']);
+    assert.deepEqual(pack.manifest.host_modes, ['playing', 'tv']);
     assert.deepEqual(
       pack.files.map(file => file.path),
       ['README.md', 'assets/app.js', 'assets/style.css', 'display.html', 'host.html', 'manifest.json', 'player.html'],

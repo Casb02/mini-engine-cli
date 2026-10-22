@@ -8,7 +8,9 @@ export const MAX_STATE_BYTES = 64 * 1024;
 export const AWARDS_PER_MINUTE = 30;
 const MAX_ROOMS = 500;
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-const MODES = ['moderator', 'playing', 'hostless'];
+const MODES = ['moderator', 'playing', 'tv', 'hostless'];
+/** Modes in which the creator also gets a seat; with tv the creating device is the screen. */
+const SEATED = ['playing', 'hostless'];
 
 const now = () => Math.floor(Date.now() / 1000);
 const newToken = () => randomBytes(32).toString('hex');
@@ -188,7 +190,7 @@ export class DevEngine {
       throw bad('Deze game ondersteunt deze modus of capaciteit niet.');
     }
     if (metadata.runtime === 'host' && config.host_mode === 'hostless') {
-      throw bad('Browser-hostgames hebben een spelleider nodig: kies moderator of playing.');
+      throw bad('Browser-hostgames hebben een spelleider nodig: kies playing, tv of moderator.');
     }
     if (this.rooms.size >= MAX_ROOMS) throw new EngineError(503, 'room_limit', 'De server zit vol. Probeer later opnieuw.');
     let code;
@@ -197,7 +199,7 @@ export class DevEngine {
     } while (this.rooms.has(code));
     const host = newToken();
     const display = newToken();
-    const playerId = config.host_mode !== 'moderator' ? randomUUID() : null;
+    const playerId = SEATED.includes(config.host_mode) ? randomUUID() : null;
     const players = [];
     if (playerId) {
       const hostName = (name ?? 'Spelleider').trim();
@@ -514,7 +516,10 @@ export class DevEngine {
       throw notEligible('Deze room is zonder account gemaakt. Log in voordat je een room maakt om achievements te geven.');
     }
     // A host who plays along is a player like any other; a moderator cannot reward their own account by also joining.
-    if (room.host_account_id === player.account_id && player.id !== room.host_player_id) throw notEligible('Je kunt jezelf geen achievement geven.');
+    // A TV is a device, not a person: its owner may earn on their own phone.
+    if (room.host_account_id === player.account_id && room.config.host_mode !== 'tv' && player.id !== room.host_player_id) {
+      throw notEligible('Je kunt jezelf geen achievement geven.');
+    }
     if (Date.now() - live.awards.started >= 60_000) live.awards = { started: Date.now(), count: 0 };
     if (live.awards.count >= AWARDS_PER_MINUTE) {
       throw new EngineError(429, 'rate_limit', 'Te veel achievements in korte tijd. Probeer het over een minuut opnieuw.');
