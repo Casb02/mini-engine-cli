@@ -1,0 +1,164 @@
+import { lstat, readdir, readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { CliError } from './errors.mjs';
+import { formatBytes } from './format.mjs';
+
+const MiB = 1024 * 1024;
+export const LIMITS = { files: 4096, fileBytes: 2 * MiB, totalBytes: 10 * MiB, pathBytes: 255, depth: 32, bodyBytes: 16 * MiB };
+export const ID_PATTERN = /^[a-z0-9-]{1,48}$/;
+export const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
+
+export function compileIgnore(line) {
+  let pattern = line.trim();
+  if (!pattern || pattern.startsWith('#')) return null;
+  if (pattern.startsWith('!')) throw new CliError(`.meignore: uitzonderingen met ! worden niet ondersteund (${pattern}).`);
+  const dirOnly = pattern.endsWith('/');
+  pattern = pattern.replace(/\/+$/, '');
+  const anchored = pattern.includes('/');
+  pattern = pattern.replace(/^\/+/, '');
+  let source = '';
+  for (let i = 0; i < pattern.length; i += 1) {
+    const char = pattern[i];
+    if (char === '*' && pattern[i + 1] === '*') {
+      if (pattern[i + 2] === '/') {
+        source += '(?:.*/)?';
+        i += 2;
+      } else {
+        source += '.*';
+        i += 1;
+      }
+    } else if (char === '*') source += '[^/]*';
+    else if (char === '?') source += '[^/]';
+    else source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return { pattern: line.trim(), dirOnly, regex: new RegExp(anchored ? `^${source}$` : `^(?:.*/)?${source}$`) };
+}
+
+export function parseIgnore(text) {
+  return text.split(/\r?\n/).map(compileIgnore).filter(Boolean);
+}
+
+export function isIgnored(rules, path, isDir) {
+  return rules.some(rule => (!rule.dirOnly || isDir) && rule.regex.test(path));
+}
+
+function builtinSkip(name, path, isDir) {
+  if (name.startsWith('.')) return true;
+  if (name === 'node_modules') return true;
+  return isDir && path === 'tests';
+}
+
+export async function collectFiles(dir) {
+  const root = resolve(dir);
+  let rules = [];
+  try {
+    rules = parseIgnore(await readFile(join(root, '.meignore'), 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error instanceof CliError ? error : new CliError(`Kan .meignore niet lezen: ${error.message}`);
+  }
+  const files = [];
+  const walk = async (absolute, prefix) => {
+    const entries = await readdir(absolute, { withFileTypes: true });
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      const path = prefix + entry.name;
+      const full = join(absolute, entry.name);
+      const stats = await lstat(full);
+      const isDir = stats.isDirectory();
+      if (builtinSkip(entry.name, path, isDir) || isIgnored(rules, path, isDir)) continue;
+      if (stats.isSymbolicLink()) {
+        throw new CliError(`Symlinks worden niet geüpload: ${path}`, { hint: 'Vervang de link door een gewoon bestand of zet hem in .meignore.' });
+      }
+      if (entry.name.includes('\\')) throw new CliError(`Bestandsnamen mogen geen backslash bevatten: ${path}`);
+      if (isDir) await walk(full, `${path}/`);
+      else if (stats.isFile()) files.push({ path, size: stats.size, absolute: full });
+      else throw new CliError(`Alleen gewone bestanden en mappen kunnen worden geüpload: ${path}`);
+    }
+  };
+  try {
+    const stats = await lstat(root);
+    if (!stats.isDirectory()) throw new CliError(`${dir} is geen map.`);
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new CliError(`Map niet gevonden: ${dir}`);
+    throw error;
+  }
+  await walk(root, '');
+  return files;
+}
+
+export function checkLimits(files) {
+  const problems = [];
+  for (const file of files) {
+    if (Buffer.byteLength(file.path) > LIMITS.pathBytes) problems.push(`Pad langer dan ${LIMITS.pathBytes} bytes: ${file.path}`);
+    if (file.path.split('/').length > LIMITS.depth) problems.push(`Pad dieper dan ${LIMITS.depth} niveaus: ${file.path}`);
+    if (file.size > LIMITS.fileBytes) problems.push(`Bestand groter dan ${formatBytes(LIMITS.fileBytes)}: ${file.path} (${formatBytes(file.size)})`);
+  }
+  if (files.length > LIMITS.files) problems.push(`Te veel bestanden: ${files.length} (maximaal ${LIMITS.files}).`);
+  const total = files.reduce((sum, file) => sum + file.size, 0);
+  if (total > LIMITS.totalBytes) problems.push(`Game is te groot: ${formatBytes(total)} (maximaal ${formatBytes(LIMITS.totalBytes)}).`);
+  if (problems.length) {
+    const shown = problems.slice(0, 8);
+    if (problems.length > shown.length) shown.push(`… en nog ${problems.length - shown.length}`);
+    throw new CliError(`De game past niet binnen de uploadlimieten:\n  ${shown.join('\n  ')}`, {
+      code: 'limits',
+      hint: 'Zet bestanden die niet nodig zijn in .meignore.',
+    });
+  }
+  return total;
+}
+
+export function checkManifest(text, paths) {
+  let manifest;
+  try {
+    manifest = JSON.parse(text);
+  } catch (error) {
+    throw new CliError(`manifest.json is geen geldige JSON: ${error.message}`);
+  }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new CliError('manifest.json moet een object zijn.');
+  const { id, version } = manifest;
+  if (typeof id !== 'string' || !ID_PATTERN.test(id)) {
+    throw new CliError('manifest.json: id moet 1 tot 48 kleine letters, cijfers of streepjes zijn.');
+  }
+  if (typeof version !== 'string' || !VERSION_PATTERN.test(version)) {
+    throw new CliError('manifest.json: version moet met een letter of cijfer beginnen en mag daarna letters, cijfers en . + _ - bevatten (maximaal 64 tekens).');
+  }
+  if (manifest.runtime !== 'host') throw new CliError('manifest.json: alleen games met runtime "host" kunnen worden geüpload.');
+  const modes = manifest.host_modes;
+  if (!Array.isArray(modes) || modes.length !== 1 || modes[0] !== 'moderator') {
+    throw new CliError('manifest.json: host_modes moet ["moderator"] zijn voor geüploade games.');
+  }
+  const required = ['host.html', 'player.html', ...(manifest.has_display ? ['display.html'] : [])];
+  const missing = required.filter(name => !paths.includes(name));
+  if (missing.length) throw new CliError(`Ontbrekende bestanden: ${missing.join(', ')}`);
+  return manifest;
+}
+
+export async function packGame(dir) {
+  const files = await collectFiles(dir);
+  const paths = files.map(file => file.path);
+  if (!paths.includes('manifest.json')) {
+    throw new CliError(`Geen manifest.json gevonden in ${dir}.`, { hint: 'Maak een game met: me game new <slug>' });
+  }
+  const totalBytes = checkLimits(files);
+  const encoded = {};
+  let manifestText;
+  for (const file of files) {
+    const bytes = await readFile(file.absolute);
+    if (bytes.length !== file.size) throw new CliError(`Bestand veranderde tijdens het inpakken: ${file.path}`);
+    if (file.path === 'manifest.json') manifestText = bytes.toString('utf8');
+    encoded[file.path] = bytes.toString('base64');
+  }
+  const manifest = checkManifest(manifestText, paths);
+  const bodyBytes = Buffer.byteLength(JSON.stringify({ files: encoded, activate: true }));
+  if (bodyBytes > LIMITS.bodyBytes) {
+    throw new CliError(`Upload wordt ${formatBytes(bodyBytes)} en de server accepteert maximaal ${formatBytes(LIMITS.bodyBytes)}.`, { code: 'limits' });
+  }
+  return {
+    id: manifest.id,
+    version: manifest.version,
+    manifest,
+    files: files.map(({ path, size }) => ({ path, size })),
+    totalBytes,
+    encoded,
+  };
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@casb02/mini-engine-cli",
+  "version": "0.3.0",
+  "description": "Command-line tool to upload and manage Mini Engine games",
+  "type": "module",
+  "bin": {
+    "me": "bin/me.mjs",
+    "miniengine": "bin/me.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "vendor",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node scripts/sync-vendor.mjs --check && node --test test/*.test.mjs",
+    "sync-vendor": "node scripts/sync-vendor.mjs",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Casb02/mini-engine-cli.git"
+  },
+  "private": true,
+  "license": "UNLICENSED"
+}
