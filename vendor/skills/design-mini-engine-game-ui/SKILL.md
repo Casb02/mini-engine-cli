@@ -1,6 +1,6 @@
 ---
 name: design-mini-engine-game-ui
-description: Use when creating or reviewing the host, player or display pages of a Mini Engine (miniengine✳) game — layout, styling, fonts, animation, phone and TV sizes — or when a game looks like an unstyled template, is hard to use on a phone, unreadable on the shared screen, or blocked by the Content-Security-Policy.
+description: Use when creating or reviewing the host, player or display pages of a Mini Engine (miniengine✳) game — layout, styling, fonts, animation, phone and TV sizes, the room code, join QR and game icon — or when a game looks like an unstyled template, is hard to use on a phone, unreadable on the shared screen, or blocked by the Content-Security-Policy.
 ---
 
 # Designing a Mini Engine game UI
@@ -16,10 +16,33 @@ Exception: when the user chose **MiniEngineUI**, the look comes from the mini-en
 | Page | Device and distance | Design for |
 | --- | --- | --- |
 | `player.html` | Phone in hand, portrait, 360–430 px wide, thumbs | One clear primary action per phase. Touch targets ≥ 48×48 px with ≥ 8 px spacing; no hover-only affordances; no horizontal scroll; respect `env(safe-area-inset-*)`. Show the player's own secret (`private_state`) privately and plainly. Confirm submissions ("Sent — waiting for the others") and disable the control while pending. |
-| `display.html` | TV or laptop across the room, 16:9 (1920×1080 and 1280×720), nobody touching it | Readable from 3–4 m: key numbers and names `clamp()`-sized to several percent of viewport height, body text ≥ ~2.5vh, contrast ≥ 7:1, no scrolling, no controls needed. In the lobby show the room code and how to join (`${location.host}/home` + code; the iframe has the engine's origin) large. Reveals are the show: give them space. |
-| `host.html` | Moderator's laptop or tablet | A console: phase, who is ready/submitted/offline, the next action as the most prominent button, destructive actions (finish, new game) visually secondary. Label secret information "only you see this" and keep it behind a show/hide toggle (hidden by default), because moderators share or mirror their screen. |
+| `display.html` | TV or laptop across the room, 16:9 (1920×1080 and 1280×720), nobody touching it | Readable from 3–4 m: key numbers and names `clamp()`-sized to several percent of viewport height, body text ≥ ~2.5vh, contrast ≥ 7:1, no scrolling, no controls needed. In the lobby show how to join large: the QR code of the join link beside the room code and "Go to `${location.host}` and enter the code" (host only, no `/home`: the root redirects there; the iframe has the engine's origin). Once the game runs, the QR goes and the code stays small in the bar. Reveals are the show: give them space. |
+| `host.html` | The creator's laptop, tablet or phone | A console: phase, who is ready/submitted/offline, the next action as the most prominent button, destructive actions (finish, new game) visually secondary. When the host plays along (`room.you.player_id` set) it is also their seat: during play their own move is the main action, the console secondary, and there is no ready button. Label secret information "only you see this" and keep it behind a show/hide toggle (hidden by default), because hosts share or mirror their screen. |
+
+Label the host in every roster and score list with `room.host_player_id` ("Hessel · host"); it is `null` when the host only leads.
 
 Design every state, not just the happy path: connecting, reconnecting (`client.connected` false), host away (`room.host_connected` false — tell players to wait), lobby with ready status, waiting for others, revealed, finished, error. Render from the latest snapshot every time; a reloaded page must look right immediately.
+
+## Room code and joining
+
+| Page | Room code | QR code |
+| --- | --- | --- |
+| Display | Plain text: big in the lobby invite, small in the bar during play. | Large in the lobby beside the code (about a quarter of the screen height), gone once the game runs. |
+| Host, player | In the bar as a button that copies the join link and shows "Copied" for 1.5 s, then the code again. | A quiet bar button "Show QR" next to the code opens a dialog with a large QR, the code and "Close" (Escape and the backdrop close it too). Use it where a permanent QR does not fit; on a phone it lets a friend scan to join. |
+
+- One join link everywhere: `${location.origin}/home/join?room=CODE`. The QR encodes it; the copy button copies it.
+- Invite text names only the host: "Go to miniengine.nl and enter the code" with `location.host`, never `/home`.
+- QR: dark modules on white with a quiet zone of 4 modules, also in dark themes; never tinted or with a logo on top.
+- Vendor the QR library under `assets/` (no CDN). MiniEngineUI ships one with helpers: `mini-engine-ui/kit/ui/invite.js`.
+- Write the labels in the game's language ("Gekopieerd", "Toon QR", "Sluiten").
+
+## Settings are shown, not changed
+
+The room's settings are chosen in the create form. Show them in the game as plain text, such as a short "Rules: 5 rounds" line in the lobby and on the display, and offer no controls to change them: changing rules while people play is unfair, and a form re-rendered from every snapshot easily loses the click.
+
+## Game icon
+
+An optional `icon` in the manifest (`assets/<name>.svg`, rules in `build-mini-engine-game/references/manifest-and-settings.md`) is shown at 52 px on `/home` and in the create form. Draw a square `viewBox="0 0 48 48"`, a full tile with its own background (`rx="12"`), one or two simple shapes in the game's colours. No text, no external references, no fonts. It must read at 52 px next to the engine's own marks.
 
 ## Hard constraints (engine CSP and catalog)
 
@@ -50,7 +73,7 @@ Design every state, not just the happy path: connecting, reconnecting (`client.c
 | --- | --- |
 | Player | Instant feedback on your own tap. The sender does not receive its own event, so show "Pressed" yourself at once, then let the snapshot show the result. When `emit` returns `false`, say plainly that the phone is not connected. |
 | Display | The room's live view: the press order with the gap to the first ("Sander +14 ms"), everyone's markers, reactions rising and fading. After a reload, values come back through `onValue`; events do not. |
-| Host | A quiet trace of the presses in order, so the moderator can follow. The decision buttons still act on the state. |
+| Host | A quiet trace of the presses in order, so the host can follow. The decision buttons still act on the state. |
 
 - **State decides, realtime decorates.** Phase, scores, turns and who won the buzz come from the snapshot. When the snapshot with the decision arrives, it replaces the live layer. Never let a realtime message be the only place a result appears: messages can be lost.
 - **Draw per frame, not per message.** Keep the latest values and draw in `requestAnimationFrame`. Move markers with a short transition instead of jumps; under `prefers-reduced-motion: reduce`, place them without animation.

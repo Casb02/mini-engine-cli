@@ -180,6 +180,81 @@ describe('packing', () => {
     assert.throws(() => checkManifest(manifest(), ['manifest.json', 'player.html']), /host.html/);
   });
 
+  test('a browser-host game may let the host play along, but never runs hostless', () => {
+    const paths = ['manifest.json', 'host.html', 'player.html'];
+    const ok = fields => checkManifest(manifest(fields), paths);
+    const refused = (fields, pattern) => assert.throws(() => checkManifest(manifest(fields), paths), pattern);
+    assert.deepEqual(ok({ host_modes: ['playing'], default_host_mode: 'playing' }).host_modes, ['playing']);
+    ok({ host_modes: ['moderator', 'playing'], default_host_mode: 'playing' });
+    ok({ host_modes: ['playing', 'moderator'], default_host_mode: 'moderator' });
+    ok({ host_modes: ['moderator', 'playing'], default_host_mode: undefined });
+    refused({ host_modes: ['hostless'], default_host_mode: 'hostless' }, /host_modes moet een lijst zijn met "moderator", "playing" of allebei\. "hostless" is alleen voor ingebouwde games\./);
+    refused({ host_modes: ['moderator', 'hostless'] }, /"hostless" is alleen voor ingebouwde games/);
+    refused({ host_modes: [] }, /host_modes moet een lijst zijn/);
+    refused({ host_modes: 'playing' }, /host_modes moet een lijst zijn/);
+    refused({ host_modes: undefined }, /host_modes moet een lijst zijn/);
+    refused({ host_modes: ['playing'], default_host_mode: 'moderator' }, /default_host_mode moet een van de host_modes zijn \("playing"\)\./);
+    refused({ host_modes: ['playing'], default_host_mode: undefined }, /default_host_mode moet een van de host_modes zijn/);
+  });
+
+  test('checks the optional icon like the engine does', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#2b6"/></svg>';
+    const files = { 'assets/icoon.svg': svg };
+    const paths = () => ['manifest.json', 'host.html', 'player.html', ...Object.keys(files)];
+    const contentOf = path => (path in files ? Buffer.from(files[path]) : undefined);
+    const check = icon => checkManifest(manifest({ icon }), paths(), contentOf);
+    const refused = (icon, pattern) => assert.throws(() => check(icon), pattern);
+
+    assert.equal(check('assets/icoon.svg').icon, 'assets/icoon.svg');
+    assert.equal(check(undefined).icon, undefined);
+    assert.equal(check(null).icon, null, 'null means no icon, as in the engine');
+    refused('icoon.svg', /manifest\.json: icon moet een SVG in assets\/ zijn, bijvoorbeeld "assets\/icoon\.svg"\./);
+    refused('assets/icoon.png', /icon moet een SVG in assets\//);
+    refused('assets/icoon.SVG', /icon moet een SVG in assets\//);
+    refused(42, /icon moet een SVG in assets\//);
+    refused('assets/weg.svg', /manifest\.json: icon assets\/weg\.svg staat niet in de game\./);
+    assert.throws(() => checkManifest(manifest({ icon: 'assets/icoon.svg' }), paths()), /staat niet in de game/, 'without contents the icon cannot be checked');
+
+    files['assets/groot.svg'] = `<svg>${' '.repeat(64 * 1024)}</svg>`;
+    refused('assets/groot.svg', /icon assets\/groot\.svg is 65547 bytes; een icoon mag maximaal 65536 bytes \(64 KiB\) zijn\./);
+    files['assets/precies.svg'] = `<svg>${' '.repeat(64 * 1024 - 11)}</svg>`;
+    assert.equal(Buffer.byteLength(files['assets/precies.svg']), 64 * 1024);
+    check('assets/precies.svg');
+    files['assets/latin1.svg'] = '<svg>\u00e9</svg>';
+    const latin1 = Buffer.from('<svg>\xe9</svg>', 'latin1');
+    assert.throws(() => checkManifest(manifest({ icon: 'assets/latin1.svg' }), paths(), path => (path === 'assets/latin1.svg' ? latin1 : contentOf(path))), /icon assets\/latin1\.svg is geen geldige UTF-8\./);
+    files['assets/png.svg'] = 'PNG';
+    refused('assets/png.svg', /icon assets\/png\.svg is geen SVG: er staat geen <svg in\./);
+    files['assets/hoofd.svg'] = '<SVG viewBox="0 0 48 48"></SVG>';
+    check('assets/hoofd.svg');
+
+    const bad = {
+      script: ['<svg><SCRIPT>alert(1)</SCRIPT></svg>', /bevat <script\. Een icoon mag geen scripts bevatten\./],
+      foreign: ['<svg><foreignObject><p>x</p></foreignObject></svg>', /bevat <foreignObject\./],
+      link: ['<svg><a href="JavaScript:alert(1)"><rect/></a></svg>', /bevat javascript:\./],
+      onload: ['<svg onload="alert(1)"></svg>', /bevat een on…=-attribuut\./],
+      spaced: ['<svg><rect\nOnClick = "x"/></svg>', /bevat een on…=-attribuut/],
+      slash: ['<svg/onload=alert(1)>', /bevat een on…=-attribuut/],
+    };
+    for (const [name, [content, pattern]] of Object.entries(bad)) {
+      files[`assets/${name}.svg`] = content;
+      refused(`assets/${name}.svg`, pattern);
+    }
+    const fine = { tekst: '<svg><text>Zon = heet, on=</text><g data-on="x" font="y"/></svg>' };
+    for (const [name, content] of Object.entries(fine)) {
+      files[`assets/${name}.svg`] = content;
+      check(`assets/${name}.svg`);
+    }
+  });
+
+  test('packs a game with its icon and refuses an icon that .meignore leaves out', async () => {
+    const svg = '<svg viewBox="0 0 48 48"><rect width="48" height="48" rx="12"/></svg>';
+    const dir = await gameDir('icoon', { 'manifest.json': manifest({ icon: 'assets/icoon.svg' }), 'assets/icoon.svg': svg });
+    assert.equal((await packGame(dir)).manifest.icon, 'assets/icoon.svg');
+    await writeFile(join(dir, '.meignore'), '*.svg\n');
+    await assert.rejects(packGame(dir), /manifest\.json: icon assets\/icoon\.svg staat niet in de game\./);
+  });
+
   test('pre-checks achievements and set_kinds with the engine rules', () => {
     const paths = ['manifest.json', 'host.html', 'player.html'];
     const achievement = (overrides = {}) => ({ id: 'eerste-buzz', title: 'Eerste buzz', description: 'Druk als eerste op de knop.', ...overrides });
@@ -212,7 +287,7 @@ describe('packing', () => {
     const pack = await packGame(directory);
     assert.equal(pack.id, 'ja-of-nee');
     assert.equal(pack.manifest.runtime, 'host');
-    assert.deepEqual(pack.manifest.host_modes, ['moderator']);
+    assert.deepEqual(pack.manifest.host_modes, ['playing', 'moderator']);
     assert.deepEqual(
       pack.files.map(file => file.path),
       ['README.md', 'assets/app.js', 'assets/style.css', 'display.html', 'host.html', 'manifest.json', 'player.html'],

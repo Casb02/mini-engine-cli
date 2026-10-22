@@ -10,6 +10,8 @@ export const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
 export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 export const MAX_ACHIEVEMENTS = 50;
 export const MAX_SET_KINDS = 4;
+export const HOST_MODES = ['moderator', 'playing'];
+export const ICON_BYTES = 64 * 1024;
 
 export function compileIgnore(line) {
   let pattern = line.trim();
@@ -154,12 +156,50 @@ function checkDeclarations(manifest) {
   });
 }
 
+function checkHostModes(manifest) {
+  const modes = manifest.host_modes;
+  if (!Array.isArray(modes) || !modes.length || !modes.every(mode => HOST_MODES.includes(mode))) {
+    throw new CliError('manifest.json: host_modes moet een lijst zijn met "moderator", "playing" of allebei. "hostless" is alleen voor ingebouwde games.');
+  }
+  const fallback = manifest.default_host_mode ?? 'moderator';
+  if (!modes.includes(fallback)) {
+    throw new CliError(`manifest.json: default_host_mode moet een van de host_modes zijn (${modes.map(mode => `"${mode}"`).join(', ')}).`);
+  }
+}
+
+const ICON_FORBIDDEN = [
+  [/<script/i, '<script'],
+  [/<foreignobject/i, '<foreignObject'],
+  [/javascript:/i, 'javascript:'],
+  [/[ \t\n\r/"']on[a-z]+[ \t\n\r\f]*=/i, 'een on…=-attribuut'],
+];
+
+function checkIcon(manifest, paths, contentOf) {
+  const icon = manifest.icon;
+  if (icon === undefined || icon === null) return;
+  if (typeof icon !== 'string' || !icon.startsWith('assets/') || !icon.endsWith('.svg')) {
+    throw new CliError('manifest.json: icon moet een SVG in assets/ zijn, bijvoorbeeld "assets/icoon.svg".');
+  }
+  const bytes = paths.includes(icon) ? contentOf(icon) : undefined;
+  if (!bytes) throw new CliError(`manifest.json: icon ${icon} staat niet in de game.`, { hint: 'Controleer het pad en of .meignore het bestand overslaat.' });
+  if (bytes.length > ICON_BYTES) throw new CliError(`manifest.json: icon ${icon} is ${bytes.length} bytes; een icoon mag maximaal ${ICON_BYTES} bytes (64 KiB) zijn.`);
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new CliError(`manifest.json: icon ${icon} is geen geldige UTF-8.`);
+  }
+  if (!/<svg/i.test(text)) throw new CliError(`manifest.json: icon ${icon} is geen SVG: er staat geen <svg in.`);
+  const found = ICON_FORBIDDEN.find(([pattern]) => pattern.test(text));
+  if (found) throw new CliError(`manifest.json: icon ${icon} bevat ${found[1]}. Een icoon mag geen scripts bevatten.`);
+}
+
 export function declared(manifest) {
   const pick = entries => (Array.isArray(entries) ? entries.map(({ id, title, description }) => ({ id, title, description })) : []);
   return { achievements: pick(manifest.achievements), set_kinds: pick(manifest.set_kinds) };
 }
 
-export function checkManifest(text, paths) {
+export function checkManifest(text, paths, contentOf = () => undefined) {
   let manifest;
   try {
     manifest = JSON.parse(text);
@@ -175,14 +215,12 @@ export function checkManifest(text, paths) {
     throw new CliError('manifest.json: version moet met een letter of cijfer beginnen en mag daarna letters, cijfers en . + _ - bevatten (maximaal 64 tekens).');
   }
   if (manifest.runtime !== 'host') throw new CliError('manifest.json: alleen games met runtime "host" kunnen worden geüpload.');
-  const modes = manifest.host_modes;
-  if (!Array.isArray(modes) || modes.length !== 1 || modes[0] !== 'moderator') {
-    throw new CliError('manifest.json: host_modes moet ["moderator"] zijn voor geüploade games.');
-  }
+  checkHostModes(manifest);
   checkDeclarations(manifest);
   const required = ['host.html', 'player.html', ...(manifest.has_display ? ['display.html'] : [])];
   const missing = required.filter(name => !paths.includes(name));
   if (missing.length) throw new CliError(`Ontbrekende bestanden: ${missing.join(', ')}`);
+  checkIcon(manifest, paths, contentOf);
   return manifest;
 }
 
@@ -194,14 +232,14 @@ export async function packGame(dir) {
   }
   const totalBytes = checkLimits(files);
   const encoded = {};
-  let manifestText;
+  const contents = new Map();
   for (const file of files) {
     const bytes = await readFile(file.absolute);
     if (bytes.length !== file.size) throw new CliError(`Bestand veranderde tijdens het inpakken: ${file.path}`);
-    if (file.path === 'manifest.json') manifestText = bytes.toString('utf8');
+    contents.set(file.path, bytes);
     encoded[file.path] = bytes.toString('base64');
   }
-  const manifest = checkManifest(manifestText, paths);
+  const manifest = checkManifest(contents.get('manifest.json').toString('utf8'), paths, path => contents.get(path));
   const bodyBytes = Buffer.byteLength(JSON.stringify({ files: encoded, activate: true }));
   if (bodyBytes > LIMITS.bodyBytes) {
     throw new CliError(`Upload wordt ${formatBytes(bodyBytes)} en de server accepteert maximaal ${formatBytes(LIMITS.bodyBytes)}.`, { code: 'limits' });

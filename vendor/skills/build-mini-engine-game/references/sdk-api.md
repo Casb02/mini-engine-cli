@@ -22,10 +22,10 @@ const client = new MiniEngine(session).connect(); // after the null check
 | `room` | all | Latest snapshot (`null` before the first one). |
 | `on(event, fn)` / `once(event, fn)` | all | Returns an unsubscribe function. Events: `snapshot` (room), `action` (host only: `{player_id, name, data}`), `status` (`connecting/connected/reconnecting/disconnected`), `error` (`MiniEngineError`), `closed` (terminal reason), `throttled` (`{dropped}`: realtime messages the engine dropped), `achievement` (`{player_id, achievement: {id, title, description}}`, first time only, to everyone). |
 | `waitForSnapshot(predicate?, {timeout?, signal?})` | all | Resolves with a matching current/future snapshot. |
-| `ready(ready = true)` | players | Lobby only (`room_started` otherwise). A moderator host has no readiness. |
-| `action(name, data = {}, {actionId?})` | **players only** in custom games | Name: 1–64 of `A-Za-z0-9_.-`; data: JSON ≤ 8 KiB. Fails with `host_offline` if the host tab is not connected. Ack = queued at host. |
+| `ready(ready = true)` | players | Lobby only (`room_started` otherwise). A moderator host has no readiness. A host who plays along does not need it: its seat counts as ready (`ready()` from it only changes the flag). |
+| `action(name, data = {}, {actionId?})` | **players only** in custom games | The host gets `forbidden`, also when it plays along: it applies its own moves with `setState`. Name: 1–64 of `A-Za-z0-9_.-`; data: JSON ≤ 8 KiB. Fails with `host_offline` if the host tab is not connected. Ack = queued at host. |
 | `setState({expected_version, public_state, host_state?, player_states?})` | host | Replaces all state. Omitted `host_state` → `null`, omitted `player_states` → `{}`. ≤ 64 KiB total. Unknown player ids are rejected. |
-| `lifecycle('running' / 'finished' / 'lobby')` | host | Only `lobby→running→finished→lobby`; `running` needs every player ready (`players_not_ready`); `lobby` wipes state. |
+| `lifecycle('running' / 'finished' / 'lobby')` | host | Only `lobby→running→finished→lobby`; `running` needs every player ready except the host's own seat (`players_not_ready`); `lobby` wipes state. |
 | `setSettings(settings)` | host | Whole object, schema-validated, uses the current version. |
 | `configure({display_enabled?, allow_late_join?})` | host, lobby | Host mode cannot change. |
 | `award(playerId, achievementId)` | host | 0.5+. Grants a declared achievement; see "Achievements" below. Ack also when the player already had it. |
@@ -45,7 +45,7 @@ Events and values are never stored, versioned or put in a snapshot, and they can
 
 ## Snapshot (`room`)
 
-`code`, `game_id`, `status` (`lobby`/`running`/`finished`), `version`, `round_id`, `max_players`, `host_connected`, `players[]` (`{id, name, connected, ready, account_id?}` — the moderator is not in this list; `account_id` is `null` for guests), `settings`, `config` (`{host_mode, display_enabled, allow_late_join}`), `runtime`, `set` (0.5+: `{id, kind, title}` of the player-made set the room plays with, or `null`), `public_state`, `you` (`{role, player_id}`; `player_id` is `null` for the moderator and display). Host only: `host_state`, `player_states`. Player: `private_state` (own entry of `player_states`, or `null`).
+`code`, `game_id`, `status` (`lobby`/`running`/`finished`), `version`, `round_id`, `max_players`, `host_connected`, `players[]` (`{id, name, connected, ready, account_id?}` — a moderator is not in this list, a host who plays along is; `account_id` is `null` for guests), `host_player_id` (0.5.1+: the creator's seat when they play along, otherwise `null`; every role receives it), `settings`, `config` (`{host_mode, display_enabled, allow_late_join}`), `runtime`, `set` (0.5+: `{id, kind, title}` of the player-made set the room plays with, or `null`), `public_state`, `you` (`{role, player_id}`; `player_id` is `null` for a moderator and the display, and equals `host_player_id` for a host who plays along). Host only: `host_state`, `player_states`. Player: `private_state` (own entry of `player_states`, or `null`).
 
 Presence, joins and readiness produce snapshots **without** a version bump: never drop a snapshot because its version is unchanged.
 
@@ -78,7 +78,7 @@ await http(`/api/v1/rooms/${code}/leave`, { method: 'POST', token: session.token
 
 ## Achievements (0.5+)
 
-`client.award(playerId, achievementId)` (host) is refused unless: the room is a browser-host room (`forbidden` otherwise) that is `running` or `finished` (`game_not_running`); the player is in `room.players` (`player_not_found`) and has an account (`not_eligible`); the id is declared in the release the room is pinned to (`achievement_unknown`); the room was created by a logged-in host and the player's account is not that host's account (`not_eligible`); and the room has awarded fewer than 30 in the last minute (`rate_limit`). The engine takes the account from its own seat record. Awarding twice changes nothing and still acks; the `achievement` event goes out only the first time. These awards are stored as `source: "game"` and shown apart from server-verified ones.
+`client.award(playerId, achievementId)` (host) is refused unless: the room is a browser-host room (`forbidden` otherwise) that is `running` or `finished` (`game_not_running`); the player is in `room.players` (`player_not_found`) and has an account (`not_eligible`); the id is declared in the release the room is pinned to (`achievement_unknown`); the room was created by a logged-in host and the player's account is not that host's account (`not_eligible`), except on the host's own seat when it plays along (0.5.1+); and the room has awarded fewer than 30 in the last minute (`rate_limit`). The engine takes the account from its own seat record. Awarding twice changes nothing and still acks; the `achievement` event goes out only the first time. These awards are stored as `source: "game"` and shown apart from server-verified ones.
 
 ## Account routes (0.5+)
 

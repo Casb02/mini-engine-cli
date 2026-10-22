@@ -11,11 +11,15 @@
   <div class="me-page">
     <header class="me-bar">
       <span class="me-bar-name">__TITLE__</span>
-      <div class="me-bar-end"><span class="me-muted">Join at <span class="me-join-url">/home</span> with code</span><span class="me-code" id="code"></span></div>
+      <div class="me-bar-end"><span class="me-muted">Join at <span class="me-join-url"></span> with code</span><span class="me-code" id="code"></span></div>
     </header>
     <div class="me-notices"><p id="error" class="me-notice is-error" role="alert"></p></div>
     <main class="me-stage">
       <div class="me-wide">
+        <section id="invite" class="me-invite" hidden>
+          <div id="invite-qr" class="me-qr"></div>
+          <div class="me-invite-text"><span class="me-label">Go to <span class="me-join-url"></span> and enter the code</span><span class="me-code" id="invite-code"></span></div>
+        </section>
         <section class="me-surface me-stack">
           <h1 id="prompt" class="me-title">Connecting…</h1>
           <p id="status" class="me-status" role="status">Waiting for the room.</p>

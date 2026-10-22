@@ -589,14 +589,70 @@ button.me-code:not(:disabled):hover {
   margin-bottom: 10px;
 }
 
+.me-qr {
+  flex: none;
+  padding: 6px;
+  border-radius: var(--me-radius-card);
+  background: #ffffff;
+}
+.me-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  shape-rendering: crispEdges;
+}
+
+.me-dialog {
+  width: min(calc(100vw - 32px), 24rem);
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--me-line);
+  border-radius: 22px;
+  background: var(--me-surface);
+  color: var(--me-ink);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.45);
+}
+.me-dialog::backdrop {
+  background: rgba(20, 27, 23, 0.6);
+}
+.me-dialog-body {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: clamp(20px, 5vw, 28px);
+  text-align: center;
+}
+.me-dialog .me-qr {
+  width: 100%;
+  max-width: 18rem;
+}
+.me-dialog .me-code {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  font-size: 1.8em;
+}
+
 .me-invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em 1.4em;
+  text-align: center;
+}
+.me-invite-text {
   display: grid;
   justify-items: center;
   gap: 0.4em;
-  text-align: center;
 }
 .me-invite .me-label {
   font-size: 1em;
+}
+.me-invite .me-qr {
+  width: 25vh;
+  min-width: 9rem;
+  padding: 0.3em;
 }
 .me-invite .me-code {
   min-height: 0;

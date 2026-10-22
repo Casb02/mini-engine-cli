@@ -24,7 +24,7 @@ This skill replaces the "invent your own look" part of design-mini-engine-game-u
 
 The kit is in this skill's directory, in `kit/`.
 
-1. Scaffold the game as usual (build-mini-engine-game), then copy `kit/ui/` to `<game>/assets/ui/` (stylesheet, two fonts, their licenses).
+1. Scaffold the game as usual (build-mini-engine-game), then copy `kit/ui/` to `<game>/assets/ui/` (stylesheet, two fonts, the QR module `kit/ui/qr.js` with `kit/ui/qr.d.ts`, the invite helpers `kit/ui/invite.js`, and their licenses). The QR module is vendored untyped: the game's `jsconfig.json` needs `"exclude": ["assets/ui/qr.js"]` (scaffolds from SDK 0.5.1 have it), and `qr.d.ts` types it for the check.
 2. Copy `kit/host.html`, `kit/player.html` and `kit/display.html` over the game's pages and replace `__SLUG__` with the game id and `__TITLE__` with its title. They keep the scaffold's element ids, so the scaffolded vote game runs styled before you change any JavaScript.
 3. Empty `assets/style.css` (the scaffold's styles fight the kit). It becomes the game's own stylesheet: theme overrides and the signature element only. Never edit `assets/ui/mini-engine-ui.css`; override it.
 4. Choose the theme with `data-theme` on `<body>`, the same on all three pages unless the user wants otherwise:
@@ -39,7 +39,7 @@ The kit is in this skill's directory, in `kit/`.
    A game that needs another mood gets its own theme in `assets/style.css`: see `references/components.md`.
 5. Build the real screens from the components in `references/components.md`: `me-focus` columns on phones, `me-console` for the host, `me-surface` as the stage, `me-choices` for answers, `me-scores`, `me-roster`, `me-invite`, `me-secret`.
 6. Give the stage **one signature element**: the board, the table, the question card, the timer. Draw it inside a `me-surface` (it takes `--me-stage-surface`) and keep everything around it quiet.
-7. Replace the scaffold's player list with the roster markup (presence dot, name, ready label) and fill the display's join line (`.me-join-url`) with `location.host + '/home'` (snippets in the reference).
+7. Replace the scaffold's player list with the roster markup (presence dot, name, host label, ready label), wire the copyable room code and "Show QR" on host and player, and fill the display's invite: QR, join line (`.me-join-url`) with `location.host`, code (snippets in the reference).
 
 ## Rules
 
@@ -49,6 +49,12 @@ The kit is in this skill's directory, in `kit/`.
 - No Mini Engine logo or wordmark in the game: the bar shows the game's own name.
 - Render names and other user text with `textContent`.
 - Animate only what happens live (a reveal: add `me-reveal` once), never on first render or reconnect. The kit already removes motion under `prefers-reduced-motion: reduce`.
+- The room code on host and player pages is a `button.me-code` that copies the join link (`${location.origin}/home/join?room=CODE`) and shows "Copied" for 1.5 s. The display shows the code as plain text.
+- The display's lobby shows the invite large: QR beside the code and "Go to miniengine.nl and enter the code" with `location.host`, never `/home` (the root redirects there). Once the game runs, only the bar code stays.
+- Host and player pages get a quiet "Show QR" bar button (`me-bar-button`) next to the code; it opens a `me-dialog` with a large QR. Use it wherever a permanent QR does not fit. Keep the QR dark on white (`me-qr`) in every theme.
+- Labels follow the game's language: pass them to `bindCopyCode` and `bindQrDialog` ("Gekopieerd", "Sluiten", "Scan om mee te doen") and translate the bar button ("Toon QR").
+- Show settings as plain text (a short "Rules: …" line), never as controls: they are chosen in the create form.
+- Label the host in rosters with `room.host_player_id`; the host's seat shows no ready toggle.
 - Celebrate achievements (engine 0.5+) with one short `me-notice`: on the display for everyone, on a phone only for the player who earned it, gone after a few seconds. Plain words ("Dani earned Drie keer raak"), no confetti, no sound, no exclamation marks. The snippet is in the reference.
 
 ## Done means
@@ -56,5 +62,6 @@ The kit is in this skill's directory, in `kit/`.
 - [ ] All three pages use the kit, the chosen theme and one signature element; the scaffold's old styles are gone.
 - [ ] Screenshots viewed: player at 390×844, host at 1280×800, display at 1920×1080, in lobby, during play and at the end.
 - [ ] Display readable from across the room (title, numbers, room code), no scrolling.
+- [ ] The display's lobby QR scans from a phone across the room and opens the join form with the code filled in; the room code on host and player copies the join link; "Show QR" opens and closes (Escape, backdrop, Close).
 - [ ] Network: `assets/ui/fonts/*.woff2` load with status 200; no CSP or 404 errors in the console.
 - [ ] Text contrast checked for a custom theme: at least 4.5:1, 7:1 on the display.
