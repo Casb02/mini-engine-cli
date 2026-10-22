@@ -95,7 +95,7 @@ A trusted **host-runtime** vote game for Mini Engine v0.2. The host tab validate
 
 1. Put this whole directory at games/${slug}/ in your Mini Engine checkout.
 2. Restart the engine from its project root (cargo run). If your server uses another games directory, put it there instead.
-3. Open the engine's /demo, select **${title}**, and create a moderator room.
+3. Open the engine's /home, select **${title}**, and create a moderator room.
 4. Join from another browser/device using the room code, then click **I'm ready**.
 5. On the host, click **Start voting**. Vote on the player screen; optionally open a display.
 
