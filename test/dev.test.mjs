@@ -350,6 +350,123 @@ describe('me dev speaks the engine protocol', () => {
   });
 });
 
+const PLAYING_GAME = process.env.ME_DEV_PARITY_PLAYING_GAME;
+const ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#2b6"/></svg>';
+
+describe('me dev lets the host of a browser-host game play along', { skip: PARITY_URL && !PLAYING_GAME ? 'set ME_DEV_PARITY_PLAYING_GAME for a game with host_modes ["moderator", "playing"]' : false }, () => {
+  let home;
+  let cleanup;
+  let dev;
+  let base;
+  let gameId;
+  const clients = [];
+
+  before(async () => {
+    if (PARITY_URL) {
+      base = PARITY_URL.replace(/\/+$/, '');
+      gameId = PLAYING_GAME;
+      return;
+    }
+    ({ home, cleanup } = await tempHome());
+    const dir = await writeGame(home, 'meespelen', manifest => ({ ...manifest, host_modes: ['moderator', 'playing'], default_host_mode: 'playing', icon: 'assets/icoon.svg', achievements: [{ id: 'winnaar', title: 'Winnaar', description: 'Win de stemming.' }] }));
+    await writeFile(join(dir, 'assets', 'icoon.svg'), ICON);
+    dev = await startDev(['meespelen', '--port', '0', '--players', '1'], { home }).ready();
+    base = dev.url;
+    gameId = 'meespelen';
+  });
+
+  after(async () => {
+    for (const client of clients) client.close();
+    await dev?.stop();
+    await cleanup?.();
+  });
+
+  const open = credentials => {
+    const client = connect(base, credentials);
+    clients.push(client);
+    return client;
+  };
+  const host = () => new ApiClient({ baseUrl: base, accountToken: HOST_ACCOUNT });
+  const player = index => new ApiClient({ baseUrl: base, accountToken: PLAYER_ACCOUNTS[index] });
+
+  test('the games listing carries the icon exactly as declared, and the icon is served', { skip: Boolean(PARITY_URL) }, async () => {
+    const listing = (await call(base, '/api/v1/games')).json.games.find(game => game.id === gameId);
+    assert.equal(listing.icon, 'assets/icoon.svg');
+    assert.equal((await call(base, `/api/v1/games/${gameId}`)).json.icon, 'assets/icoon.svg');
+    const icon = await call(base, `/games/${gameId}/assets/icoon.svg`);
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers.get('content-type'), 'image/svg+xml');
+    assert.equal(icon.text, ICON);
+  });
+
+  test('the creator gets a seat on the host credential that never blocks the start and can earn achievements', async () => {
+    const credentials = await host().createRoom({ game_id: gameId, name: ' Cas ', config: { host_mode: 'playing' } });
+    assert.equal(credentials.role, 'host');
+    assert.equal(typeof credentials.player_id, 'string');
+    const daniSeat = await player(0).joinRoom(credentials.code, 'Dani');
+    const hostClient = open(credentials);
+    const dani = open(daniSeat);
+    const display = open({ code: credentials.code, token: credentials.display_token, role: 'display' });
+    const everyone = [hostClient, dani, display];
+    await Promise.all(everyone.map(client => client.waitForSnapshot(room => room.host_connected && room.players.every(p => p.connected))));
+
+    for (const client of everyone) assert.equal(client.room.host_player_id, credentials.player_id);
+    assert.deepEqual(hostClient.room.you, { role: 'host', player_id: credentials.player_id });
+    assert.deepEqual(hostClient.room.players.map(p => [p.name, p.ready]), [['Cas', true], ['Dani', false]]);
+    assert.equal(hostClient.room.private_state, null, 'the playing host also gets its own private state');
+    assert.equal((await rejection(hostClient.action('vote', { yes: true }))).code, 'forbidden');
+    assert.equal((await call(base, `/api/v1/rooms/${credentials.code}/leave`, { method: 'POST', token: credentials.token })).json.error.code, 'forbidden');
+    const kick = await call(base, `/api/v1/rooms/${credentials.code}/players/${credentials.player_id}`, { method: 'DELETE', token: credentials.token });
+    assert.equal(kick.status, 400);
+
+    assert.equal((await rejection(hostClient.lifecycle('running'))).code, 'players_not_ready');
+    await hostClient.ready(false);
+    await dani.ready(true);
+    await hostClient.waitForSnapshot(room => room.players.every(p => p.ready === (p.id === daniSeat.player_id)));
+    assert.equal(hostClient.room.version, 0);
+    await hostClient.lifecycle('running');
+    await hostClient.award(credentials.player_id, 'winnaar');
+    const earned = await until(() => hostClient.achievements[0], 'the achievement event for the playing host');
+    assert.equal(earned.achievement.id, 'winnaar', 'a host who plays along can earn an achievement on its own seat');
+    await hostClient.setState({ expected_version: 1, public_state: {}, player_states: { [credentials.player_id]: { hand: [7] } } });
+    await hostClient.waitForSnapshot(room => room.version === 2);
+    assert.deepEqual(hostClient.room.private_state, { hand: [7] });
+    await hostClient.lifecycle('finished');
+    await hostClient.lifecycle('lobby');
+    await Promise.all(everyone.map(client => client.waitForSnapshot(room => room.status === 'lobby' && room.version === 4)));
+    assert.deepEqual(hostClient.room.players.map(p => [p.name, p.ready]), [['Cas', true], ['Dani', false]]);
+    assert.equal(display.room.host_player_id, credentials.player_id);
+  });
+
+  test('the host seat counts towards the players; a moderator room has no host seat; hostless is refused', async () => {
+    const full = await host().createRoom({ game_id: gameId, max_players: 2 });
+    assert.equal(typeof full.player_id, 'string', 'default_host_mode decides when config leaves host_mode out');
+    const snapshot = (await call(base, `/api/v1/rooms/${full.code}`, { token: full.token })).json;
+    assert.deepEqual(snapshot.players.map(p => p.name), ['Spelleider']);
+    await player(0).joinRoom(full.code, 'Dani');
+    const third = await call(base, `/api/v1/rooms/${full.code}/join`, { method: 'POST', body: { name: 'Sander' } });
+    assert.deepEqual([third.status, third.json.error.code], [409, 'room_full']);
+
+    const moderated = await host().createRoom({ game_id: gameId, name: 'Cas', config: { host_mode: 'moderator' } });
+    assert.equal(moderated.player_id, null);
+    const view = (await call(base, `/api/v1/rooms/${moderated.code}`, { token: moderated.token })).json;
+    assert.equal(view.host_player_id, null);
+    assert.deepEqual(view.players, []);
+
+    const hostless = await call(base, '/api/v1/rooms', { method: 'POST', body: { game_id: gameId, config: { host_mode: 'hostless' } } });
+    assert.deepEqual([hostless.status, hostless.json.error.code], [400, 'invalid_request']);
+    const name = await call(base, '/api/v1/rooms', { method: 'POST', body: { game_id: gameId, name: 'x'.repeat(25) } });
+    assert.deepEqual([name.status, name.json.error.code], [400, 'invalid_request']);
+  });
+
+  test('the launcher seats the host as a player too', { skip: Boolean(PARITY_URL) }, async () => {
+    const state = (await call(dev.url, '/__me/state')).json;
+    assert.deepEqual(state.seats.map(seat => seat.label), ['Spelleider', 'Scherm', 'Dani']);
+    const credential = JSON.parse(decodeURIComponent(state.seats[0].hash));
+    assert.equal(typeof credential.player_id, 'string');
+  });
+});
+
 describe('me dev', () => {
   let home;
   let cleanup;
@@ -400,6 +517,19 @@ describe('me dev', () => {
     assert.equal(badges.code, 1);
     assert.match(badges.stderr, /manifest\.json: achievements\[0\]\.id moet 1 tot 48 kleine letters/);
     assert.equal(badges.stderr, badgesUpload.stderr);
+
+    await writeGame(home, 'zonderleider', manifest => ({ ...manifest, host_modes: ['hostless'], default_host_mode: 'hostless' }));
+    const hostless = await runMe(['dev', 'zonderleider', '--no-open'], { home });
+    assert.equal(hostless.code, 1);
+    assert.match(hostless.stderr, /"hostless" is alleen voor ingebouwde games\./);
+    assert.equal(hostless.stderr, (await runMe(['game', 'upload', join(home, 'zonderleider'), '--dry-run'], { home })).stderr);
+
+    const scripted = await writeGame(home, 'scripticoon', manifest => ({ ...manifest, icon: 'assets/icoon.svg' }));
+    await writeFile(join(scripted, 'assets', 'icoon.svg'), '<svg onload="alert(1)"></svg>');
+    const icon = await runMe(['dev', 'scripticoon', '--no-open'], { home });
+    assert.equal(icon.code, 1);
+    assert.match(icon.stderr, /manifest\.json: icon assets\/icoon\.svg bevat een on…=-attribuut\. Een icoon mag geen scripts bevatten\./);
+    assert.equal(icon.stderr, (await runMe(['game', 'upload', scripted, '--dry-run'], { home })).stderr);
 
     await writeGame(home, 'schema', manifest => ({ ...manifest, default_settings: { prompt: 'x', allow_change: 'ja' } }));
     const schema = await runMe(['dev', 'schema', '--no-open'], { home });

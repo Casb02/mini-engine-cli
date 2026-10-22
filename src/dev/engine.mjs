@@ -69,6 +69,7 @@ function project(live, identity) {
     max_players: room.max_players,
     settings: room.settings,
     host_connected: live.sessions.has(room.host_hash),
+    host_player_id: room.host_player_id ?? null,
     players: room.players.map(player => ({
       id: player.id,
       name: player.name,
@@ -159,7 +160,7 @@ export class DevEngine {
       chosen = this.game.chooseSet(input.set_id);
       validateSetContent(metadata, chosen.set.kind, chosen.data);
     }
-    return this.createWithOptions(metadata, max, settings, { config, accountId, set: chosen });
+    return this.createWithOptions(metadata, max, settings, { config, accountId, set: chosen, name: input.name });
   }
 
   initialSettings(metadata, incoming) {
@@ -173,7 +174,7 @@ export class DevEngine {
     return merged ?? metadata.default_settings;
   }
 
-  createWithOptions(metadata, maxPlayers, settings, { config, accountId, set }) {
+  createWithOptions(metadata, maxPlayers, settings, { config, accountId, set, name }) {
     if (!Number.isInteger(maxPlayers) || maxPlayers < 1 || maxPlayers > 100 || !isObject(settings)) {
       throw bad('Kies 1–100 spelers en een settings-object.');
     }
@@ -186,7 +187,9 @@ export class DevEngine {
     ) {
       throw bad('Deze game ondersteunt deze modus of capaciteit niet.');
     }
-    if (metadata.runtime === 'host' && config.host_mode !== 'moderator') throw bad('Browser-hostgames vereisen een aparte spelleider.');
+    if (metadata.runtime === 'host' && config.host_mode === 'hostless') {
+      throw bad('Browser-hostgames hebben een spelleider nodig: kies moderator of playing.');
+    }
     if (this.rooms.size >= MAX_ROOMS) throw new EngineError(503, 'room_limit', 'De server zit vol. Probeer later opnieuw.');
     let code;
     do {
@@ -194,6 +197,14 @@ export class DevEngine {
     } while (this.rooms.has(code));
     const host = newToken();
     const display = newToken();
+    const playerId = config.host_mode !== 'moderator' ? randomUUID() : null;
+    const players = [];
+    if (playerId) {
+      const hostName = (name ?? 'Spelleider').trim();
+      validateName(hostName);
+      // In a browser-host game the host starts the game; that is their consent.
+      players.push({ id: playerId, name: hostName, token_hash: hash(host), account_id: accountId ?? null, ready: metadata.runtime === 'host' });
+    }
     const data = {
       code,
       game_id: metadata.id,
@@ -202,7 +213,7 @@ export class DevEngine {
       max_players: maxPlayers,
       host_hash: hash(host),
       display_hash: hash(display),
-      players: [],
+      players,
       public_state: {},
       host_state: null,
       player_states: {},
@@ -210,7 +221,7 @@ export class DevEngine {
       last_active: now(),
       runtime: metadata.runtime,
       config,
-      host_player_id: null,
+      host_player_id: playerId,
       round_id: randomUUID(),
       game_version: metadata.version,
       host_account_id: accountId ?? null,
@@ -226,7 +237,7 @@ export class DevEngine {
       awards: { started: Date.now(), count: 0 },
     });
     this.observe('created', code);
-    const credential = { code, token: host, role: 'host', player_id: null };
+    const credential = { code, token: host, role: 'host', player_id: playerId };
     if (config.display_enabled) credential.display_token = display;
     return credential;
   }
@@ -317,7 +328,7 @@ export class DevEngine {
       requireHost(identity);
       const allowed = (room.status === 'lobby' && status === 'running') || (room.status === 'running' && status === 'finished') || (room.status === 'finished' && status === 'lobby');
       if (!allowed) throw conflict('invalid_transition', 'Gebruik lobby → running → finished → lobby.');
-      if (status === 'running' && room.players.some(player => !player.ready)) throw conflict('players_not_ready', 'Wacht tot iedereen klaar is.');
+      if (status === 'running' && room.players.some(player => !player.ready && player.id !== room.host_player_id)) throw conflict('players_not_ready', 'Wacht tot iedereen klaar is.');
       room.status = status;
       room.version += 1;
       if (status === 'lobby') {
@@ -325,7 +336,7 @@ export class DevEngine {
         room.host_state = null;
         room.player_states = {};
         room.round_id = randomUUID();
-        for (const player of room.players) player.ready = false;
+        for (const player of room.players) player.ready = player.id === room.host_player_id;
       }
     });
   }
@@ -502,7 +513,8 @@ export class DevEngine {
     if (!room.host_account_id) {
       throw notEligible('Deze room is zonder account gemaakt. Log in voordat je een room maakt om achievements te geven.');
     }
-    if (room.host_account_id === player.account_id) throw notEligible('Je kunt jezelf geen achievement geven.');
+    // A host who plays along is a player like any other; a moderator cannot reward their own account by also joining.
+    if (room.host_account_id === player.account_id && player.id !== room.host_player_id) throw notEligible('Je kunt jezelf geen achievement geven.');
     if (Date.now() - live.awards.started >= 60_000) live.awards = { started: Date.now(), count: 0 };
     if (live.awards.count >= AWARDS_PER_MINUTE) {
       throw new EngineError(429, 'rate_limit', 'Te veel achievements in korte tijd. Probeer het over een minuut opnieuw.');

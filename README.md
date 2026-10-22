@@ -130,7 +130,7 @@ cd mijn-spel
 me dev
 ```
 
-`me dev` controleert eerst `manifest.json` zoals `me game upload` dat doet en start dan een kleine server die de engine nabootst voor games met `runtime: "host"`: kamers, spelers en klaar zijn, state met versies, acties naar de spelleider, realtime, achievements en game-data (of een eigen set met `--set`). In de browser zie je de spelleider, het tv-scherm en de spelers naast elkaar. Elke stoel draait op een eigen poort, dus elke speler heeft een eigen sessie, net als op een eigen telefoon. Met **Speler toevoegen** schuift er iemand aan, met **Nieuwe kamer** begin je opnieuw.
+`me dev` controleert eerst `manifest.json` zoals `me game upload` dat doet en start dan een kleine server die de engine nabootst voor games met `runtime: "host"`: kamers, spelers en klaar zijn, state met versies, acties naar de spelleider, realtime, achievements en game-data (of een eigen set met `--set`). In de browser zie je de spelleider, het tv-scherm en de spelers naast elkaar. Elke stoel draait op een eigen poort, dus elke speler heeft een eigen sessie, net als op een eigen telefoon. Met **Speler toevoegen** schuift er iemand aan, met **Nieuwe kamer** begin je opnieuw. Is `default_host_mode` `"playing"`, dan speelt de spelleider mee zoals op de echte engine: hij heeft een eigen stoel die altijd klaar staat, en elke snapshot heeft `host_player_id`.
 
 Pas je iets aan in de map, dan laden de stoelen opnieuw en blijft de kamer bestaan. Een fout in het manifest zie je in het overzicht en in de terminal. Gekregen achievements verschijnen in de terminal. Alles staat alleen in het geheugen; stoppen doe je met Ctrl+C.
 
@@ -155,11 +155,19 @@ ontwerp/
 assets/**/*.wav
 ```
 
-Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` met `host_modes: ["moderator"]` gebruikt en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
+Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` gebruikt, dat `host_modes` een of beide van `"moderator"` en `"playing"` bevat (`"hostless"` is alleen voor ingebouwde games) met `default_host_mode` daarin, dat een eventueel `icon` klopt (zie hieronder) en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
 
 De eerste versie van een nieuwe game wordt meteen actief. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
 
 Na een geslaagde upload van een actieve versie toont de CLI waar je de game start: `<server>/home/new/<id>`. Bij een server ouder dan 0.5 is dat nog `/demo/new/<id>`.
+
+### Spelleider speelt mee
+
+Met `host_modes: ["moderator", "playing"]` kiest de maker van een kamer of hij alleen leidt of ook meespeelt; `default_host_mode` bepaalt wat het formulier voorstelt. Speelt de spelleider mee (sinds Mini Engine 0.5.1), dan heeft hij met dezelfde sleutel ook een stoel: `player_id` in de credential en `host_player_id` in elke snapshot (anders `null`). Die stoel telt mee voor `max_players`, staat altijd klaar en houdt de start nooit tegen. De hostpagina blijft scheidsrechter: hij stuurt geen acties, maar past zijn eigen zet direct toe met `setState`. Op zijn eigen stoel kan hij ook achievements krijgen. Een nieuwe game van `me game new` speelt standaard mee (`["playing", "moderator"]`); zonder `host_modes` blijft het `["moderator"]`.
+
+### Icoon
+
+Een game kan een eigen icoon meenemen: `"icon": "assets/icoon.svg"`. Voor het uploaden controleert de CLI dezelfde regels als de engine: het pad begint met `assets/` en eindigt op `.svg`, het bestand zit in de upload, is hoogstens 64 KiB en geldige UTF-8, bevat `<svg` en bevat geen `<script`, `<foreignObject`, `javascript:` of `on…=`-attributen (hoofdletters maken niet uit). Maak het vierkant (`viewBox="0 0 48 48"`), met een eigen achtergrond (`rx="12"`), een of twee eenvoudige vormen in de kleuren van je game, zonder tekst, lettertypen of externe verwijzingen.
 
 ### Achievements en eigen sets
 

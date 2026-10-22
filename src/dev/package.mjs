@@ -59,6 +59,7 @@ export function engineMetadata(manifest) {
       achievements: readList(manifest, 'achievements', { id: 'string', title: 'string', description: 'string' }),
       set_kinds: readList(manifest, 'set_kinds', { id: 'string', title: 'string', description: 'string', schema: 'value' }),
     };
+    if (Object.hasOwn(manifest, 'icon') && manifest.icon !== null) metadata.icon = readField(manifest, 'icon', 'string');
   } catch (error) {
     throw refused(`Invalid manifest for ${manifest.id}: ${error.message}`);
   }
@@ -83,7 +84,7 @@ export function engineMetadata(manifest) {
       !['host', 'server'].includes(m.runtime) ||
       !m.host_modes.length ||
       !m.host_modes.includes(m.default_host_mode) ||
-      (m.runtime === 'host' && (m.host_modes.length !== 1 || m.host_modes[0] !== 'moderator'))
+      (m.runtime === 'host' && m.host_modes.includes('hostless'))
     ) {
       throw new Error('Invalid runtime or unsupported host modes.');
     }
@@ -103,7 +104,7 @@ export async function loadPackage(dir) {
   checkLimits(files);
   const contents = new Map();
   for (const file of files) contents.set(file.path, await readFile(file.absolute));
-  const manifest = checkManifest(contents.get('manifest.json').toString('utf8'), paths);
+  const manifest = checkManifest(contents.get('manifest.json').toString('utf8'), paths, path => contents.get(path));
   const metadata = engineMetadata(manifest);
   const html = {};
   const decoder = new TextDecoder('utf-8', { fatal: true });

@@ -51,7 +51,7 @@ const csp = (frameAncestors, frameSrc = "'self'") =>
   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src ${frameSrc}; frame-ancestors ${frameAncestors}; base-uri 'none'; object-src 'none'`;
 
 export function publicMetadata(metadata) {
-  const keys = ['id', 'title', 'description', 'version', 'min_players', 'max_players', 'has_display', 'supports_late_join', 'default_settings', 'settings_schema', 'runtime', 'host_modes', 'default_host_mode', 'achievements', 'set_kinds'];
+  const keys = ['id', 'title', 'description', 'version', 'min_players', 'max_players', 'has_display', 'supports_late_join', 'default_settings', 'settings_schema', 'runtime', 'host_modes', 'default_host_mode', 'achievements', 'set_kinds', 'icon'];
   return Object.fromEntries(keys.map(key => [key, metadata[key]]));
 }
 
