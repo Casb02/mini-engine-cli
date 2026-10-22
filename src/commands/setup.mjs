@@ -2,7 +2,7 @@ import { relative, resolve } from 'node:path';
 import { request } from '../api.mjs';
 import { homeDir, normalizeServer, updateConfig } from '../config.mjs';
 import { CliError, usageError } from '../errors.mjs';
-import { maskToken, tildePath } from '../format.mjs';
+import { maskToken, terminalSafe, tildePath } from '../format.mjs';
 import { checkSlug, scaffoldGame } from '../scaffold.mjs';
 import { installSkills } from '../skills.mjs';
 import { login, verifyDevKey } from './auth.mjs';
@@ -44,7 +44,7 @@ export const setupCommands = [
       if (flags.game && flags['no-game']) throw usageError('Gebruik --game of --no-game, niet allebei.');
       if (flags.game) checkSlug(flags.game);
       const ask = !flags.yes;
-      const say = text => ctx.stderr.write(`${text}\n`);
+      const say = text => ctx.stderr.write(`${terminalSafe(text)}\n`);
       const prompter = () => ctx.prompter;
       const settings = await ctx.settings();
       const result = { server: null, server_version: null, account: null, skills: null, game: null, next: [] };

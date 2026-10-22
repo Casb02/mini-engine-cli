@@ -3,7 +3,7 @@ import { mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { configPath, loadConfig, normalizeServer, resolveSettings, saveConfig, updateConfig } from '../src/config.mjs';
-import { formatBytes, maskToken } from '../src/format.mjs';
+import { formatBytes, maskToken, table, terminalSafe } from '../src/format.mjs';
 import { checkManifest, collectFiles, compileIgnore, isIgnored, packGame, parseIgnore } from '../src/pack.mjs';
 import { selectPrune } from '../src/prune.mjs';
 import { scaffoldGame } from '../src/scaffold.mjs';
@@ -83,6 +83,11 @@ describe('config', () => {
 });
 
 describe('format', () => {
+  test('strips terminal control sequences from server text', () => {
+    assert.equal(terminalSafe('Quiz\u001b[2J\u001b]0;pwned\u0007 Night\r\u009b31m'), 'Quiz[2J]0;pwned Night31m');
+    assert.equal(terminalSafe('regel 1\nregel 2\tkolom'), 'regel 1\nregel 2\tkolom');
+    assert.doesNotMatch(table(['id'], [['evil\u001b[31m']]), /\u001b/);
+  });
   test('masks tokens to prefix and last four characters', () => {
     assert.equal(maskToken(KEY), 'med_…ab12');
     assert.equal(maskToken('e2e-admin-token-0123456789abcdef0123456789'), '…6789');

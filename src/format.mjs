@@ -25,8 +25,11 @@ export function formatDate(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// Server-provided text must not be able to move the cursor or recolour the terminal.
+export const terminalSafe = text => String(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '');
+
 export function table(headers, rows) {
-  const cells = [headers, ...rows].map(row => row.map(cell => String(cell ?? '-')));
+  const cells = [headers, ...rows].map(row => row.map(cell => terminalSafe(cell ?? '-')));
   const widths = headers.map((_, column) => Math.max(...cells.map(row => [...row[column]].length)));
   return cells
     .map(row => row.map((cell, column) => (column === row.length - 1 ? cell : cell + ' '.repeat(widths[column] - [...cell].length))).join('  ').trimEnd())

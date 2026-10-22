@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import { request } from './api.mjs';
 import { resolveSettings } from './config.mjs';
 import { CliError, usageError } from './errors.mjs';
+import { terminalSafe } from './format.mjs';
 import { createPrompter } from './prompt.mjs';
 import { PACKAGE, vendorInfo } from './vendor.mjs';
 import { adminCommands, adminGroups } from './commands/admin.mjs';
@@ -130,10 +131,10 @@ function makeContext(io, values, args) {
       prompter?.close();
     },
     info(text) {
-      if (!ctx.json) stdout.write(`${text}\n`);
+      if (!ctx.json) stdout.write(`${terminalSafe(text)}\n`);
     },
     warn(text) {
-      stderr.write(`${text}\n`);
+      stderr.write(`${terminalSafe(text)}\n`);
     },
     async dev(path, options = {}) {
       const { server, token } = await ctx.settings();
@@ -220,7 +221,7 @@ export async function main(argv, io) {
     ctx = makeContext(io, parsed.values, args);
     const result = (await command.run(ctx)) ?? {};
     if (ctx.json) stdout.write(`${JSON.stringify(result.data ?? {}, null, 2)}\n`);
-    else if (result.text) stdout.write(`${result.text}\n`);
+    else if (result.text) stdout.write(`${terminalSafe(result.text)}\n`);
     return result.exitCode ?? 0;
   } catch (error) {
     if (!(error instanceof CliError)) {
@@ -232,8 +233,8 @@ export async function main(argv, io) {
       if (error.hint) payload.hint = error.hint;
       stdout.write(`${JSON.stringify({ error: payload }, null, 2)}\n`);
     } else {
-      stderr.write(`Fout: ${error.message}\n`);
-      if (error.hint) stderr.write(`${error.hint}\n`);
+      stderr.write(`Fout: ${terminalSafe(error.message)}\n`);
+      if (error.hint) stderr.write(`${terminalSafe(error.hint)}\n`);
     }
     return error.exitCode ?? 1;
   } finally {
