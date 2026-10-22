@@ -99,7 +99,7 @@ export const gameCommands = [
       const { directory, files } = await scaffoldGame(slug, target);
       const shown = displayPath(ctx.cwd, directory);
       const { token } = await ctx.settings();
-      const next = [...(token ? [] : ['me auth']), `cd ${shown}`, 'me game upload'];
+      const next = [`cd ${shown}`, 'me dev', ...(token ? [] : ['me auth']), 'me game upload'];
       return {
         data: { id: slug, directory, files },
         text: [`Game ${slug} gemaakt in ${shown} (${files.length} bestanden).`, '', 'Volgende stappen:', ...next.map(line => `  ${line}`)].join('\n'),

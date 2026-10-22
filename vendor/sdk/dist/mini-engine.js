@@ -9,6 +9,7 @@ var MiniEngineError = class extends Error {
   code;
   status;
 };
+var turnstileHeaders = (token) => token ? { "X-Turnstile-Token": token } : {};
 var normalizeCode = (code) => code.trim().toUpperCase();
 function endpoint(baseUrl, path) {
   return baseUrl ? `${baseUrl.replace(/\/+$/, "")}${path}` : path;
@@ -60,20 +61,27 @@ var ApiClient = class {
   displayToken(code, token) {
     return this.call(`${this.roomPath(code)}/display-token`, { method: "POST", token });
   }
-  /** Creates an account; the engine mails a confirmation link to `email`. */
-  register(input) {
-    return this.call("/accounts/register", { method: "POST", body: JSON.stringify(input) });
+  /**
+   * Creates an account; the engine mails a confirmation link to `email`.
+   * When the engine runs Turnstile, pass the widget token rendered with action `register`.
+   */
+  register(input, { turnstileToken } = {}) {
+    return this.call("/accounts/register", { method: "POST", headers: turnstileHeaders(turnstileToken), body: JSON.stringify(input) });
   }
   /** Confirms an address with the token from the `?verify=` link; needs that account's `accountToken`. */
   verifyEmail(token) {
     return this.call("/accounts/verify-email", { method: "POST", token: this.accountToken, body: JSON.stringify({ token }) });
   }
-  /** Adds or changes the account address, or resends the confirmation link. */
-  setEmail(email) {
-    return this.call("/accounts/email", { method: "PUT", token: this.accountToken, body: JSON.stringify({ email }) });
+  /** Adds or changes the account address, or resends the confirmation link; a Turnstile token uses action `email`. */
+  setEmail(email, { turnstileToken } = {}) {
+    return this.call("/accounts/email", { method: "PUT", token: this.accountToken, headers: turnstileHeaders(turnstileToken), body: JSON.stringify({ email }) });
   }
   login(input) {
     return this.call("/accounts/login", { method: "POST", body: JSON.stringify(input) });
+  }
+  /** Public account settings; `turnstile_site_key` is `null` when the engine does not check for robots. */
+  accountConfig() {
+    return this.call("/accounts/config");
   }
   me() {
     return this.call("/accounts/me", { token: this.accountToken });

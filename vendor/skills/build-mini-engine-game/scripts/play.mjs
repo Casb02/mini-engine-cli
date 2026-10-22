@@ -29,6 +29,7 @@ async function seat(session, { width = 390, height = 844 } = {}) {
   await page.goto(`${base}/room/${session.code}/${session.role}`);
   return { page, game: page.frameLocator('iframe') };
 }
+// Achievements only reach logged-in seats: give post() account tokens as in verify-and-troubleshoot.md, "Achievements".
 try {
   const host = await post('/api/v1/rooms', { game_id: gameId, config: { host_mode: 'moderator', display_enabled: true } });
   const players = [await post(`/api/v1/rooms/${host.code}/join`, { name: 'Dani' }), await post(`/api/v1/rooms/${host.code}/join`, { name: 'Sander' })];

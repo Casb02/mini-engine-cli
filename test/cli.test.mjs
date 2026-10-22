@@ -502,7 +502,7 @@ describe('setup', () => {
     assert.equal(data.account.username, 'sander');
     assert.equal(data.skills, null);
     assert.equal(data.game.id, 'eerste');
-    assert.deepEqual(data.next, ['cd eerste', 'me game upload', 'me game list']);
+    assert.deepEqual(data.next, ['cd eerste', 'me dev', 'me game upload', 'me game list']);
     assert.deepEqual(JSON.parse(await readFile(configFile(), 'utf8')), { server: fake.url, token: key });
     await assert.rejects(stat(join(home, '.claude')));
   });
@@ -512,7 +512,7 @@ describe('setup', () => {
     const result = await runMe(['setup'], { home, input });
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stderr, /Ingelogd als Sander/);
-    assert.match(result.stdout, /Klaar\. Volgende stappen:\n {2}cd mijn-quiz\n {2}me game upload\n {2}me game list/);
+    assert.match(result.stdout, /Klaar\. Volgende stappen:\n {2}cd mijn-quiz\n {2}me dev\n {2}me game upload\n {2}me game list/);
     assert.ok((await stat(join(home, '.claude', 'skills', 'build-mini-engine-game'))).isDirectory());
     assert.ok((await stat(join(home, 'mijn-quiz', 'manifest.json'))).isFile());
 

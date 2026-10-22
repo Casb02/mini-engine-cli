@@ -1,12 +1,25 @@
 # Running, verifying and troubleshooting
 
+## Quick loop without an engine: `me dev`
+
+The Mini Engine CLI (0.5+) fakes the engine for `runtime: "host"` games, so you can play while you build:
+
+```sh
+cd <game directory>
+me dev                          # --players 4, --set sets/test.json, --port 3170, --no-open
+```
+
+It checks `manifest.json` like `me game upload`, then opens one page with the host, the display and every player side by side; each seat runs on its own port, so each has its own session like a separate phone. Saving a file reloads the seats and keeps the room. Rooms, ready, state versions, actions, realtime, achievements (every player counts as logged in; awards appear in the terminal) and game data (`--set` swaps in a set file, validated against `set_kinds`) work as on the engine. Everything lives in memory.
+
+Use it for the hand-played game and fast iteration. It is a fake: before you report done, still run the game once on a real engine (below, or an uploaded test release).
+
 ## Run the engine
 
 From the engine checkout root (defaults are relative to the working directory):
 
 ```sh
 cargo run                                   # or a built binary: ./target/debug/mini-engine
-MINI_ENGINE_BIND=0.0.0.0:3000 cargo run     # phones on the same Wi-Fi: open http://<LAN-IP>:3000/demo everywhere, host included
+MINI_ENGINE_BIND=0.0.0.0:3000 cargo run     # phones on the same Wi-Fi: open http://<LAN-IP>:3000/home everywhere, host included
 ```
 
 | Variable | Default |
@@ -29,8 +42,8 @@ node --test tests/*.test.mjs             # pure rules in assets/logic.js
 
 ## Play it by hand
 
-1. Open `http://localhost:3000/demo`, pick the game and create a room (moderator). This tab becomes the host at `/room/CODE/host`.
-2. For each player open a **new** tab in a separate browser profile/private window or another device, open `/demo`, enter the room code, then a unique player name. The tab becomes `/room/CODE/player`. Do not duplicate tabs: `sessionStorage` (where the seat credentials live) is per tab and is copied by "duplicate", which makes both tabs the same seat (`session_replaced`).
+1. Open `http://localhost:3000/home`, pick the game and create a room (moderator). This tab becomes the host at `/room/CODE/host`.
+2. For each player open a **new** tab in a separate browser profile/private window or another device, open `/home`, enter the room code, then a unique player name. The tab becomes `/room/CODE/player`. Do not duplicate tabs: `sessionStorage` (where the seat credentials live) is per tab and is copied by "duplicate", which makes both tabs the same seat (`session_replaced`).
 3. Open the display from your host page's button (see host-runtime-patterns §7) or browse to `/room/CODE/display#<display_token>`.
 4. Play a complete game: ready → start → every round → finish → new game. Then: reload the host tab mid-round, put a player offline, and let a player leave mid-round (`POST /api/v1/rooms/CODE/leave` with their token — see sdk-api.md), including a player who holds a special secret role.
 
@@ -45,6 +58,27 @@ node games/<id>/tests/play.mjs http://127.0.0.1:3000 /tmp/shots   # second argum
 ```
 
 Interact with game elements through `seat.game` (a frame locator into the game iframe). It saves phone- and TV-sized screenshots: look at them.
+
+### Achievements
+
+Achievements (engine 0.5+) only reach logged-in seats: guests never earn them, and a browser-host game can only award them in a room whose creator was logged in, to a player with another account. Give `post()` in `play.mjs` account tokens as its third argument:
+
+```js
+const account = name => post('/api/v1/accounts/login', { username: name, password: 'speel-mee-2026' });
+const [hessel, dani] = await Promise.all(['hessel', 'dani'].map(account));
+const host = await post('/api/v1/rooms', { game_id: gameId, config: { host_mode: 'moderator', display_enabled: true } }, hessel.token);
+const players = [
+  await post(`/api/v1/rooms/${host.code}/join`, { name: 'Dani' }, dani.token),
+  await post(`/api/v1/rooms/${host.code}/join`, { name: 'Sander' }),
+];
+// …play until your rules award, then check Dani's account:
+const { achievements } = await (await fetch(`${base}/api/v1/accounts/achievements`, { headers: { authorization: `Bearer ${dani.token}` } })).json();
+assert.ok(achievements.some(item => item.id === 'drie-keer-raak' && item.source === 'game'));
+```
+
+- Create the accounts once with `POST /api/v1/accounts/register` (`{username, password, display_name, email}`; username 3–24 of `a-z 0-9 _`, password at least 10 characters), then log in on later runs. An engine allows five registrations per ten minutes per address, and an engine with Turnstile configured refuses scripted registrations, so test on a local engine. A confirmed email address is not needed.
+- Sander stays a guest on purpose: he must get nothing, and nothing on screen may break.
+- The host must not award to its own account: do not log Hessel in as a player in the same room.
 
 ## Privacy check
 
@@ -61,9 +95,9 @@ Also search the player and display DOM for secret values. The host legitimately 
 
 | Symptom | Cause / fix |
 | --- | --- |
-| Game missing in `/demo` | Engine not restarted, or directory name ≠ manifest `id`. |
+| Game missing in `/home` | Engine not restarted, or directory name ≠ manifest `id`. |
 | Engine will not start | Invalid package; read the startup error (see above). |
-| Page says to open it from the room launcher | Opened `/api/v1/games/...` or the HTML directly; there is no session in this tab. Use `/demo` or `/room/CODE/<role>`. |
+| Page says to open it from the room launcher | Opened `/api/v1/games/...` or the HTML directly; there is no session in this tab. Use `/home` or `/room/CODE/<role>`. |
 | Console: `Refused to execute inline script` / `Refused to load the script` (CSP), or a 404 for a module | Inline script, inline event handler, external script or import map; or a wrong absolute asset path (`/games/<id>/assets/...`). |
 | Player action error `host_offline` | Host tab closed, asleep or reconnecting. |
 | Action acked but nothing changes | Host reducer ignored it: wrong name, payload shape, phase or status. Log in the host's `action` handler. |
@@ -75,3 +109,9 @@ Also search the player and display DOM for secret values. The host legitimately 
 | Scores vanish after "new round" | `lifecycle('lobby')` wipes state; keep rounds inside `running`. |
 | `session_replaced` / a tab goes silent | The same seat was opened in another tab. |
 | Display shows nothing / "Open het scherm via de schermlink" | Display opened without the `#token` fragment, or display disabled for the room. |
+| `realtime.emit` returns `false`, or realtime handlers never fire | Not connected yet (wait for the first snapshot), an engine older than 0.5, or the event targets someone else (`to`). The sender only gets its own event with `echo: true`. |
+| `throttled` events | The page sends more than 60 realtime messages per second, more than 64 keys, or the room's values exceed 256 KiB. Send less, or raise `realtime.setInterval`. |
+| `error` event `invalid_request` after a realtime call | Channel or key outside `A-Za-z0-9_.:-` (1–64), data over 2 KiB, or a bad `to`. |
+| `award` fails with `not_eligible` | The player is a guest, the room was created without logging in, or the player uses the host's own account. Expected; do not show it as an error. |
+| `award` fails with `achievement_unknown` | The id is not in the release this room started with: check `manifest.json`, upload and activate, then create a new room. |
+| `gameData` returns another shape than `data.json` | The room plays with a player's own set (`room.set`); give `data.json` the shape of the set kind. |

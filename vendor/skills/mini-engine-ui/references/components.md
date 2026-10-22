@@ -125,17 +125,45 @@ Join line in the bar (already in `kit/display.html`), or a large invite in the l
 
 ```html
 <div class="me-invite">
-  <span class="me-label">Join at <span id="join-url"></span> with code</span>
+  <span class="me-label">Join at <span class="me-join-url">/home</span> with code</span>
   <span class="me-code" id="invite-code"></span>
 </div>
 ```
 
 ```js
-$('join-url').textContent = location.host + '/demo';
+for (const slot of document.querySelectorAll('.me-join-url')) slot.textContent = location.host + '/home';
 $('invite-code').textContent = room.code;
 ```
 
+The bar and the invite use the same `me-join-url` class, so this one loop fills both. Players open that address and type the code.
+
 Show the invite large in the lobby and only the bar code once the game runs.
+
+## Achievements
+
+Engine 0.5+. The first time someone earns an achievement, every page receives the client's `achievement` event. Add a status notice next to the error notice:
+
+```html
+<div class="me-notices">
+  <p id="error" class="me-notice is-error" role="alert"></p>
+  <p id="achievement" class="me-notice me-reveal" role="status"></p>
+</div>
+```
+
+```js
+/** @type {ReturnType<typeof setTimeout> | undefined} */
+let achievementTimer;
+client.on('achievement', ({ player_id, achievement }) => {
+  const mine = player_id === client.room?.you.player_id;
+  if (role === 'player' && !mine) return;
+  const name = client.room?.players.find(player => player.id === player_id)?.name ?? 'A player';
+  $('achievement').textContent = mine ? `You earned ${achievement.title}. ${achievement.description}` : `${name} earned ${achievement.title}`;
+  clearTimeout(achievementTimer);
+  achievementTimer = setTimeout(() => { $('achievement').textContent = ''; }, 6000);
+});
+```
+
+The notice is hidden while empty and slides in once when it gets text (`me-reveal`; no motion under reduced motion). The display shows everyone's, a phone only its own. Keep it to one line: the title, on a phone also the description. The event can be missed, so nothing in the game may depend on it.
 
 ## Host
 

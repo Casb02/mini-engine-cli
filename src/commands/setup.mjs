@@ -133,9 +133,9 @@ export const setupCommands = [
         say('    Overgeslagen. Later: me game new <slug>');
       }
 
-      if (!result.account) result.next = ['me auth', `me game new ${slug ?? 'mijn-game'}`, `me game upload ${shown ?? 'mijn-game'}`];
-      else if (shown) result.next = [`cd ${shown}`, 'me game upload', 'me game list'];
-      else result.next = ['me game new mijn-game', 'cd mijn-game', 'me game upload'];
+      if (!result.account) result.next = ['me auth', `me game new ${slug ?? 'mijn-game'}`, `me dev ${shown ?? 'mijn-game'}`, `me game upload ${shown ?? 'mijn-game'}`];
+      else if (shown) result.next = [`cd ${shown}`, 'me dev', 'me game upload', 'me game list'];
+      else result.next = ['me game new mijn-game', 'cd mijn-game', 'me dev', 'me game upload'];
       return { data: result, text: ['', 'Klaar. Volgende stappen:', ...result.next.map(line => `  ${line}`)].join('\n') };
     },
   },

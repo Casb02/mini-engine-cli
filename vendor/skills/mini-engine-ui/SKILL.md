@@ -39,7 +39,7 @@ The kit is in this skill's directory, in `kit/`.
    A game that needs another mood gets its own theme in `assets/style.css`: see `references/components.md`.
 5. Build the real screens from the components in `references/components.md`: `me-focus` columns on phones, `me-console` for the host, `me-surface` as the stage, `me-choices` for answers, `me-scores`, `me-roster`, `me-invite`, `me-secret`.
 6. Give the stage **one signature element**: the board, the table, the question card, the timer. Draw it inside a `me-surface` (it takes `--me-stage-surface`) and keep everything around it quiet.
-7. Replace the scaffold's player list with the roster markup (presence dot, name, ready label) and fill the display's join line with `location.host + '/demo'` (snippets in the reference).
+7. Replace the scaffold's player list with the roster markup (presence dot, name, ready label) and fill the display's join line (`.me-join-url`) with `location.host + '/home'` (snippets in the reference).
 
 ## Rules
 
@@ -49,6 +49,7 @@ The kit is in this skill's directory, in `kit/`.
 - No Mini Engine logo or wordmark in the game: the bar shows the game's own name.
 - Render names and other user text with `textContent`.
 - Animate only what happens live (a reveal: add `me-reveal` once), never on first render or reconnect. The kit already removes motion under `prefers-reduced-motion: reduce`.
+- Celebrate achievements (engine 0.5+) with one short `me-notice`: on the display for everyone, on a phone only for the player who earned it, gone after a few seconds. Plain words ("Dani earned Drie keer raak"), no confetti, no sound, no exclamation marks. The snippet is in the reference.
 
 ## Done means
 
