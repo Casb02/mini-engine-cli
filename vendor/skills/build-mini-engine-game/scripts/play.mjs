@@ -31,7 +31,8 @@ async function seat(session, { width = 390, height = 844 } = {}) {
 }
 // Achievements only reach logged-in seats: give post() account tokens as in verify-and-troubleshoot.md, "Achievements".
 try {
-  const host = await post('/api/v1/rooms', { game_id: gameId, config: { host_mode: 'moderator', display_enabled: true } });
+  // The host plays along (the scaffold's default); use host_mode 'moderator' and drop `name` to test a host who only leads.
+  const host = await post('/api/v1/rooms', { game_id: gameId, name: 'Hessel', config: { host_mode: 'playing', display_enabled: true } });
   const players = [await post(`/api/v1/rooms/${host.code}/join`, { name: 'Dani' }), await post(`/api/v1/rooms/${host.code}/join`, { name: 'Sander' })];
   const hostSeat = await seat(host, { width: 1280, height: 800 });
   const [dani, sander] = await Promise.all(players.map(player => seat(player)));
@@ -42,9 +43,11 @@ try {
   // ---- game-specific steps: replace with your own buttons and assertions ----
   for (const player of [dani, sander]) await player.game.locator('#ready').click();
   await hostSeat.game.locator('#start:not([disabled])').click();
+  await hostSeat.game.locator('#vote-yes:not([disabled])').click();
   await dani.game.locator('#vote-yes:not([disabled])').click();
   await sander.game.locator('#vote-no:not([disabled])').click();
-  await display.frameLocator('iframe').locator('#yes', { hasText: '1' }).waitFor();
+  await display.frameLocator('iframe').locator('#yes', { hasText: '2' }).waitFor();
+  assert.equal((await snapshot(host.code, host.token)).host_player_id, host.player_id);
 
   // Privacy: nothing secret may appear in a player's or the display's snapshot.
   const daniView = await snapshot(host.code, players[0].token);

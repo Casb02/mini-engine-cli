@@ -287,7 +287,7 @@ describe('packing', () => {
     const pack = await packGame(directory);
     assert.equal(pack.id, 'ja-of-nee');
     assert.equal(pack.manifest.runtime, 'host');
-    assert.deepEqual(pack.manifest.host_modes, ['moderator']);
+    assert.deepEqual(pack.manifest.host_modes, ['playing', 'moderator']);
     assert.deepEqual(
       pack.files.map(file => file.path),
       ['README.md', 'assets/app.js', 'assets/style.css', 'display.html', 'host.html', 'manifest.json', 'player.html'],

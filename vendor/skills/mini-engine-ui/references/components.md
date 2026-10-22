@@ -10,7 +10,8 @@ All classes start with `me-`; all tokens with `--me-`. The stylesheet is `assets
     <header class="me-bar">
       <span class="me-bar-name">Game title <span class="me-role">Player</span></span>
       <div class="me-bar-end">
-        <span class="me-code" id="code"></span>
+        <button type="button" class="me-code" id="code"></button>
+        <button type="button" class="me-bar-button" id="show-qr">Show QR</button>
         <span class="me-connection" id="connection" data-status="connecting"><span class="me-connection-text">Connecting…</span></span>
       </div>
     </header>
@@ -26,6 +27,33 @@ All classes start with `me-`; all tokens with `--me-`. The stylesheet is `assets
 - `.me-notice:empty` is hidden, so an empty error paragraph takes no space.
 - On phones (≤ 720 px) the role label and the connection text hide; the dot stays.
 - `.me-bar-button` with `.me-count` is a bar button with a number (for example "Players 4") if you add a drawer or panel.
+- On the display the code is a plain `<span class="me-code" id="code">` and there is no "Show QR" button: the lobby invite carries the QR.
+
+## Room code and QR
+
+`assets/ui/invite.js` (from `kit/ui/invite.js`, no dependencies besides `./qr.js`):
+
+| Export | Does |
+| --- | --- |
+| `joinUrl(code)` | `${location.origin}/home/join?room=CODE`: the one join link, for the QR and the copy button. |
+| `qrSvg(text)` | An SVG string, dark on white with a quiet zone of 4 modules. It holds no user text, so it may go into `innerHTML`. |
+| `bindCopyCode(button, code, labels?)` | Writes the code into the button; a click copies the join link and shows `labels.copied` for 1.5 s. When copying fails the code stays. |
+| `bindQrDialog(button, code, labels?)` | A click opens a `me-dialog` with a large `me-qr`, the code and a close button. Escape and the backdrop close it. |
+
+Labels default to English (`copied: 'Copied'`, `close: 'Close'`, `scan: 'Scan to join'`, plus the titles `copy` and `showQr`); pass the game's language.
+
+Host and player, once at start (`code` is the scaffold's room code from `?room=`):
+
+```js
+import { bindCopyCode, bindQrDialog, joinUrl, qrSvg } from './ui/invite.js';
+
+if (role !== 'display') {
+  bindCopyCode($('code'), code, { copied: 'Gekopieerd', copy: 'Kopieer de link om mee te doen' });
+  bindQrDialog($('show-qr'), code, { close: 'Sluiten', scan: 'Scan om mee te doen', showQr: 'Toon een QR-code om mee te doen' });
+}
+```
+
+`bindCopyCode` owns the button's text: in `render(room)` write `$('code').textContent = room.code` only on the display. Translate the bar button's own text too ("Toon QR").
 
 Connection and host status, in `render(room)` and on the client's `status` event:
 
@@ -99,7 +127,7 @@ $('players').replaceChildren(...room.players.map(player => {
   presence.className = 'me-presence' + (player.connected ? ' is-online' : '');
   const name = document.createElement('span');
   name.className = 'me-name';
-  name.textContent = player.name;
+  name.textContent = player.id === room.host_player_id ? `${player.name} · host` : player.name;
   const ready = document.createElement('span');
   ready.className = 'me-ready' + (player.ready ? ' is-ready' : '');
   ready.textContent = player.ready ? 'Ready' : room.status === 'lobby' ? 'Not ready' : '';
@@ -121,23 +149,31 @@ Scores:
 
 ## Display
 
-Join line in the bar (already in `kit/display.html`), or a large invite in the lobby:
+Join line in the bar and the lobby invite with QR (both already in `kit/display.html`):
 
 ```html
-<div class="me-invite">
-  <span class="me-label">Join at <span class="me-join-url">/home</span> with code</span>
-  <span class="me-code" id="invite-code"></span>
-</div>
+<section id="invite" class="me-invite" hidden>
+  <div id="invite-qr" class="me-qr"></div>
+  <div class="me-invite-text">
+    <span class="me-label">Go to <span class="me-join-url"></span> and enter the code</span>
+    <span class="me-code" id="invite-code"></span>
+  </div>
+</section>
 ```
 
 ```js
-for (const slot of document.querySelectorAll('.me-join-url')) slot.textContent = location.host + '/home';
-$('invite-code').textContent = room.code;
+if (role === 'display') {
+  document.querySelectorAll('.me-join-url').forEach(slot => { slot.textContent = location.host; });
+  $('invite-qr').innerHTML = qrSvg(joinUrl(code));
+  $('invite-code').textContent = code;
+}
+// in render(room):
+if (role === 'display') $('invite').hidden = room.status !== 'lobby';
 ```
 
-The bar and the invite use the same `me-join-url` class, so this one loop fills both. Players open that address and type the code.
+The bar and the invite use the same `me-join-url` class, so this one line fills both. Name only the host (`location.host`): the root redirects to `/home`. Players scan the QR, or open that address and type the code.
 
-Show the invite large in the lobby and only the bar code once the game runs.
+Show the invite large in the lobby (the QR is about a quarter of the screen height) and only the bar code once the game runs. Leave out `#invite-qr` for an invite without QR.
 
 ## Achievements
 
@@ -165,6 +201,8 @@ client.on('achievement', ({ player_id, achievement }) => {
 
 The notice is hidden while empty and slides in once when it gets text (`me-reveal`; no motion under reduced motion). The display shows everyone's, a phone only its own. Keep it to one line: the title, on a phone also the description. The event can be missed, so nothing in the game may depend on it.
 
+`room.host_player_id` is the seat of a host who plays along (`null` when the host only leads). That seat always counts as ready.
+
 ## Host
 
 ```html
@@ -175,6 +213,18 @@ The notice is hidden while empty and slides in once when it gets text (`me-revea
 ```
 
 Closed by default, because hosts share or mirror their screen.
+
+## Settings
+
+Settings are chosen in the create form. Show them as one quiet line, never as controls:
+
+```html
+<p id="rules" class="me-muted"></p>
+```
+
+```js
+$('rules').textContent = `Rules: ${room.settings.rounds} rounds`;
+```
 
 ## Forms
 

@@ -133,6 +133,7 @@ if (role === 'host') {
 
 Rules that keep this correct:
 
+- When the host plays along, its own moves go through the same rules and queue: see §11.
 - **Validate everything** in the action: name, payload shape and range, `room.status`, your `phase`, sender is in `room.players`. `action.player_id` is set by the server and can be trusted; anything in `action.data` cannot.
 - **Read `client.room` inside the queued task**, never from a closure captured earlier.
 - Host buttons (`Reveal now`, `Next round`, `Finish`) also go through `enqueue` and call `publish` or `client.lifecycle(...)`.
@@ -298,7 +299,7 @@ function awardWinners(room, game) {
 
 - Only the host awards, only while the room is `running` or `finished`: award before `lifecycle('lobby')`.
 - Skip players whose `account_id` is `null`: guests never earn achievements.
-- The engine also answers `not_eligible` when the room was created without logging in, or when the player's account is the host's own account (no awards to yourself). The snapshot does not show whether the host was logged in, so treat `not_eligible` as normal and never show it as an error.
+- The engine also answers `not_eligible` when the room was created without logging in, or when another seat uses the host's own account (a moderator who also joined as a player). A host who plays along earns achievements on its own seat (`room.host_player_id`, engine 0.5.1+) like any player. The snapshot does not show whether the host was logged in, so treat `not_eligible` as normal and never show it as an error.
 - Awarding the same achievement again does nothing and still acks, so awarding at every finish is fine. At most 30 awards per room per minute: award only what was earned.
 - Only ids declared in the release the room started with work (`achievement_unknown` otherwise). After adding one, upload and activate the release, then create a new room.
 - The account page lists these awards apart from server-verified ones, under "Toegekend door eigen spellen". Make achievements about how someone played, not about anything that needs a referee you cannot trust.
@@ -313,3 +314,43 @@ client.on('achievement', ({ player_id, achievement }) => {
 ```
 
 Like realtime, this event can be lost and is not in the snapshot: keep it a short, calm moment and never the only place where something important appears. With MiniEngineUI, see its achievement note.
+
+## 11. The host plays along (engine 0.5.1+)
+
+In a `playing` room the creator has a seat: `room.you.player_id` and `room.host_player_id` are that seat, and it is in `room.players`. The host page is still the referee, and the host connection still cannot send `action`s (`forbidden`). So the host's own move runs the same rules function as a player's action, inside the same queue, and is published with `setState`.
+
+```js
+/** One move for any seat, the host's own included. Call it only inside enqueue. @param {string} playerId @param {unknown} value */
+async function applyPick(playerId, value) {
+  const room = client.room;
+  if (!room || room.status !== 'running' || !room.public_state.phase) return;
+  if (!room.players.some(player => player.id === playerId)) return;
+  const next = pick(/** @type {GameState} */ (room.public_state), secretsOf(room), playerId, value);
+  if (!next) return;
+  const everyone = room.players.every(player => next.game.submitted[player.id]);
+  const result = everyone ? reveal(next.game, next.secrets) : next;
+  await publish(room, result.game, result.secrets);
+}
+
+if (role === 'host') {
+  client.on('action', action => enqueue(async () => {
+    const data = action.data && typeof action.data === 'object' && !Array.isArray(action.data) ? action.data : {};
+    if (action.name === 'pick') await applyPick(action.player_id, data.value);
+  }));
+}
+
+/** The pick button on the host page and on player pages. @param {number} value */
+const sendPick = value => run(async () => {
+  if (role !== 'host') return client.action('pick', { value });
+  const own = client.room?.you.player_id;
+  if (own) await enqueue(() => applyPick(own, value));
+});
+```
+
+- **Seats come from `room.players`.** It includes the host when `room.host_player_id` is set, so `newGame(room.players.map(player => player.id), …)`, turn order, scores and "everyone has submitted" need no special case.
+- **Readiness**: the engine marks the host seat ready, also after `lifecycle('lobby')`. Hide the ready button on the host page, and leave the host seat out of a "can start" check: `room.players.every(player => player.id === room.host_player_id || player.ready)`.
+- **The host page shows two things**: the player controls for its own seat (when `room.you.player_id` is set) and the console (start, next round, finish). The move is the main action during play; console actions stay secondary. In a `moderator` room `room.you.player_id` is `null`: hide the player controls and the same code works.
+- **The host's own secret**: the host receives every `player_states` entry; show only `room.player_states?.[room.you.player_id]` in its player area. The other secrets stay hidden (behind a toggle, or not shown at all).
+- **Label the host** on every page with `room.host_player_id` (every role receives it), for example "Hessel · host" in rosters and score lists.
+- **No kick, no leave** for the host seat: hide those buttons for `room.host_player_id`.
+- Awards to the host's own seat work like any other (§10).

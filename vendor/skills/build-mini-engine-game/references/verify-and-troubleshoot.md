@@ -42,7 +42,7 @@ node --test tests/*.test.mjs             # pure rules in assets/logic.js
 
 ## Play it by hand
 
-1. Open `http://localhost:3000/home`, pick the game and create a room (moderator). This tab becomes the host at `/room/CODE/host`.
+1. Open `http://localhost:3000/home`, pick the game, fill in your name and create a room (playing, or moderator when you test that mode). This tab becomes the host at `/room/CODE/host`; when playing, it is also your seat.
 2. For each player open a **new** tab in a separate browser profile/private window or another device, open `/home`, enter the room code, then a unique player name. The tab becomes `/room/CODE/player`. Do not duplicate tabs: `sessionStorage` (where the seat credentials live) is per tab and is copied by "duplicate", which makes both tabs the same seat (`session_replaced`).
 3. Open the display from your host page's button (see host-runtime-patterns §7) or browse to `/room/CODE/display#<display_token>`.
 4. Play a complete game: ready → start → every round → finish → new game. Then: reload the host tab mid-round, put a player offline, and let a player leave mid-round (`POST /api/v1/rooms/CODE/leave` with their token — see sdk-api.md), including a player who holds a special secret role.
@@ -66,7 +66,7 @@ Achievements (engine 0.5+) only reach logged-in seats: guests never earn them, a
 ```js
 const account = name => post('/api/v1/accounts/login', { username: name, password: 'speel-mee-2026' });
 const [hessel, dani] = await Promise.all(['hessel', 'dani'].map(account));
-const host = await post('/api/v1/rooms', { game_id: gameId, config: { host_mode: 'moderator', display_enabled: true } }, hessel.token);
+const host = await post('/api/v1/rooms', { game_id: gameId, name: 'Hessel', config: { host_mode: 'playing', display_enabled: true } }, hessel.token);
 const players = [
   await post(`/api/v1/rooms/${host.code}/join`, { name: 'Dani' }, dani.token),
   await post(`/api/v1/rooms/${host.code}/join`, { name: 'Sander' }),
@@ -78,7 +78,7 @@ assert.ok(achievements.some(item => item.id === 'drie-keer-raak' && item.source 
 
 - Create the accounts once with `POST /api/v1/accounts/register` (`{username, password, display_name, email}`; username 3–24 of `a-z 0-9 _`, password at least 10 characters), then log in on later runs. An engine allows five registrations per ten minutes per address, and an engine with Turnstile configured refuses scripted registrations, so test on a local engine. A confirmed email address is not needed.
 - Sander stays a guest on purpose: he must get nothing, and nothing on screen may break.
-- The host must not award to its own account: do not log Hessel in as a player in the same room.
+- Hessel plays along, so his own seat (`host.player_id`) can earn achievements too (engine 0.5.1+). Another seat with his account cannot: do not also log Hessel in as a player in the same room.
 
 ## Privacy check
 
@@ -103,7 +103,7 @@ Also search the player and display DOM for secret values. The host legitimately 
 | Action acked but nothing changes | Host reducer ignored it: wrong name, payload shape, phase or status. Log in the host's `action` handler. |
 | `version_conflict` | A host write used an old `room.version`: write outside the queue or a stale closure. |
 | `invalid_request` "Player state bevat een onbekende speler" | `player_states` contains a player who left; rebuild it from `room.players`. |
-| `players_not_ready` on start | Every current player must press ready; the moderator has no ready state. |
+| `players_not_ready` on start | Every other player must press ready. The host seat never blocks the start (a host who plays along counts as ready), and a moderator has no ready state. |
 | `invalid_transition` | Lifecycle must go `lobby → running → finished → lobby`. |
 | `state_too_large` | Published state > 64 KiB; keep history short, send ids not full objects. |
 | Scores vanish after "new round" | `lifecycle('lobby')` wipes state; keep rounds inside `running`. |
@@ -112,6 +112,9 @@ Also search the player and display DOM for secret values. The host legitimately 
 | `realtime.emit` returns `false`, or realtime handlers never fire | Not connected yet (wait for the first snapshot), an engine older than 0.5, or the event targets someone else (`to`). The sender only gets its own event with `echo: true`. |
 | `throttled` events | The page sends more than 60 realtime messages per second, more than 64 keys, or the room's values exceed 256 KiB. Send less, or raise `realtime.setInterval`. |
 | `error` event `invalid_request` after a realtime call | Channel or key outside `A-Za-z0-9_.:-` (1–64), data over 2 KiB, or a bad `to`. |
-| `award` fails with `not_eligible` | The player is a guest, the room was created without logging in, or the player uses the host's own account. Expected; do not show it as an error. |
+| `award` fails with `not_eligible` | The player is a guest, the room was created without logging in, or another seat uses the host's own account. Expected; do not show it as an error. |
+| The host's own move fails with `forbidden` | The host page called `action()`. Apply the move in the host queue with `setState` (host-runtime-patterns §11). |
+| Engine refuses the package: `Invalid runtime or unsupported host modes.` | `hostless` in `host_modes`, an empty list, or `playing` on an engine older than 0.5.1. |
+| `Invalid icon: …` | The `icon` path or file breaks a rule in `manifest-and-settings.md` (path under `assets/`, `.svg`, ≤ 64 KiB, no scripts or event attributes). |
 | `award` fails with `achievement_unknown` | The id is not in the release this room started with: check `manifest.json`, upload and activate, then create a new room. |
 | `gameData` returns another shape than `data.json` | The room plays with a player's own set (`room.set`); give `data.json` the shape of the set kind. |

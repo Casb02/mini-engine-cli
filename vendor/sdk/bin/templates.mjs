@@ -21,6 +21,8 @@ export const jsconfig = {
     paths: { '/sdk/mini-engine.js': ['../../web/mini-engine.d.ts', './types/mini-engine.d.ts'] },
   },
   include: ['assets/**/*.js'],
+  // MiniEngineUI's vendored QR module is untyped; its qr.d.ts is checked instead.
+  exclude: ['assets/ui/qr.js'],
 };
 
 /** All files are static engine game assets; no generated npm dependency is required. */
@@ -32,8 +34,8 @@ export function gameFiles(slug) {
     description: 'A ready-to-play yes/no vote game. Customize the question and start voting.',
     version: '0.1.0',
     runtime: 'host',
-    host_modes: ['moderator'],
-    default_host_mode: 'moderator',
+    host_modes: ['playing', 'moderator'],
+    default_host_mode: 'playing',
     min_players: 1,
     max_players: 24,
     has_display: true,
@@ -89,15 +91,15 @@ export function gameFiles(slug) {
     'types/mini-engine.d.ts': sdkDeclarations,
     'README.md': `# ${title}
 
-A trusted **host-runtime** vote game for Mini Engine v0.2. The host tab validates player actions and publishes state; keep it online during play. Guests need no accounts. All roles see the same vote totals; players can optionally change their vote.
+A trusted **host-runtime** vote game for Mini Engine 0.5.1 or later. The host tab validates player actions and publishes state; keep it online during play. By default the room's creator plays along with a seat of their own; a room created in moderator mode has a host who only leads. Guests need no accounts. All roles see the same vote totals; players can optionally change their vote.
 
 ## Run in five minutes
 
 1. Put this whole directory at games/${slug}/ in your Mini Engine checkout.
 2. Restart the engine from its project root (cargo run). If your server uses another games directory, put it there instead.
-3. Open the engine's /home, select **${title}**, and create a moderator room.
-4. Join from another browser/device using the room code, then click **I'm ready**.
-5. On the host, click **Start voting**. Vote on the player screen; optionally open a display.
+3. Open the engine's /home, select **${title}**, and create a room. You play along; pick moderator in the form to only lead.
+4. Join from another browser/device using the room code, then click **I'm ready**. Your own seat as host is always ready.
+5. On the host, click **Start voting**. Vote on the host and player screens; optionally open a display.
 
 The generated HTML imports the SDK served by your engine at /sdk/mini-engine.js. Do not open the HTML files with file:// or a generic static server: the engine supplies room sessions, HTTP and WebSocket routes.
 
@@ -116,7 +118,7 @@ assets/app.js is plain JavaScript with JSDoc types, so the browser runs it uncha
 
 jsconfig.json and types/ are editor files: the engine only serves files under assets/ and ignores them. Describe your own state and settings shapes in the @typedef lines at the top of assets/app.js.
 
-The room snapshot is authoritative. A request acknowledgement means the action reached the host queue; it does not confirm durable processing for host-runtime games. The SDK never replays actions automatically. New rounds reset votes; the room's prompt and allow_change settings remain configurable through the workbench.
+The room snapshot is authoritative. A request acknowledgement means the action reached the host queue; it does not confirm durable processing for host-runtime games. The SDK never replays actions automatically. New rounds reset votes; the room's prompt and allow_change settings are chosen in the create form and stay fixed while people play.
 
 Game packages are locally trusted code, not sandboxed uploads. Review a package before installing it.
 `,
@@ -171,6 +173,20 @@ if (!session) {
     if (!client.room) throw new Error('No room snapshot yet.');
     return client.setState({ expected_version: client.room.version, public_state: { votes } });
   };
+  /** Host only, inside the queue: a vote from a player's action or from the host's own seat. @param {string} playerId @param {boolean} yes */
+  const applyVote = async (playerId, yes) => {
+    const room = client.room;
+    if (!room || room.status !== 'running' || !room.players.some(player => player.id === playerId)) return;
+    const state = stateOf(room);
+    if (!room.settings.allow_change && typeof state.votes[playerId] === 'boolean') return;
+    await publish({ ...state.votes, [playerId]: yes });
+  };
+  /** The host cannot send actions, so a host who plays along applies its own vote. @param {boolean} yes */
+  const vote = yes => run(async () => {
+    if (role !== 'host') return client.action('vote', { yes });
+    const own = client.room?.you.player_id;
+    if (own) await enqueue(() => applyVote(own, yes));
+  });
 
   /** @param {Room} room */
   function render(room) {
@@ -184,21 +200,21 @@ if (!session) {
       ? 'Get ready. The host starts the vote.' : room.status === 'running' ? 'Voting is open.' : 'Voting finished.';
     $('yes').textContent = String(votes.filter(value => value).length);
     $('no').textContent = String(votes.filter(value => !value).length);
-    $('player-controls').hidden = role !== 'player';
+    $('player-controls').hidden = !room.you.player_id;
     $('host-controls').hidden = role !== 'host';
-    button('ready').hidden = room.status !== 'lobby';
+    button('ready').hidden = role !== 'player' || room.status !== 'lobby';
     button('ready').textContent = me?.ready ? 'Ready ✓' : "I'm ready";
     button('ready').disabled = busy || !client.connected;
     const voteDisabled = busy || !client.connected || !room.host_connected || room.status !== 'running' || (!room.settings.allow_change && typeof mine === 'boolean');
     button('vote-yes').disabled = voteDisabled;
     button('vote-no').disabled = voteDisabled;
     $('my-vote').textContent = typeof mine === 'boolean' ? 'Your vote: ' + (mine ? 'Yes' : 'No') : '';
-    button('start').disabled = busy || !client.connected || room.status !== 'lobby' || !room.players.length || room.players.some(player => !player.ready);
+    button('start').disabled = busy || !client.connected || room.status !== 'lobby' || !room.players.length || room.players.some(player => player.id !== room.host_player_id && !player.ready);
     button('finish').disabled = busy || !client.connected || room.status !== 'running';
     button('reset').disabled = busy || !client.connected || room.status !== 'finished';
     $('players').replaceChildren(...room.players.map(player => {
       const item = document.createElement('li');
-      item.textContent = player.name + (player.ready ? ' · ready' : '') + (player.connected ? '' : ' · offline');
+      item.textContent = player.name + (player.id === room.host_player_id ? ' · host' : '') + (player.ready ? ' · ready' : '') + (player.connected ? '' : ' · offline');
       return item;
     }));
   }
@@ -210,23 +226,19 @@ if (!session) {
       if (room?.status === 'lobby' && !room.public_state?.votes) await publish({});
     }));
     client.on('action', action => enqueue(async () => {
-      const room = client.room;
       const data = action.data;
       // Validate everything a player sends: payloads are untrusted JSON.
       const yes = data && typeof data === 'object' && !Array.isArray(data) ? data.yes : undefined;
-      if (!room || room.status !== 'running' || action.name !== 'vote' || typeof yes !== 'boolean') return;
-      if (!room.players.some(player => player.id === action.player_id)) return;
-      const state = stateOf(room);
-      if (!room.settings.allow_change && typeof state.votes[action.player_id] === 'boolean') return;
-      await publish({ ...state.votes, [action.player_id]: yes });
+      if (action.name !== 'vote' || typeof yes !== 'boolean') return;
+      await applyVote(action.player_id, yes);
     }));
     button('start').onclick = () => run(() => enqueue(() => client.lifecycle('running')));
     button('finish').onclick = () => run(() => enqueue(() => client.lifecycle('finished')));
     button('reset').onclick = () => run(() => enqueue(() => client.lifecycle('lobby')));
   }
   button('ready').onclick = () => run(() => client.ready(!(client.room && meIn(client.room)?.ready)));
-  button('vote-yes').onclick = () => run(() => client.action('vote', { yes: true }));
-  button('vote-no').onclick = () => run(() => client.action('vote', { yes: false }));
+  button('vote-yes').onclick = () => vote(true);
+  button('vote-no').onclick = () => vote(false);
   client.on('snapshot', render);
   client.on('error', showError);
   client.on('status', status => { if (client.room) render(client.room); else $('status').textContent = status; });

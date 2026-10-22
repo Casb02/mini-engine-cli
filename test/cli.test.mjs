@@ -198,7 +198,8 @@ describe('game', () => {
     assert.ok(data.files.includes('.meignore') && data.files.includes('assets/app.js'));
     const manifest = JSON.parse(await readFile(join(home, 'ja-of-nee', 'manifest.json'), 'utf8'));
     assert.equal(manifest.runtime, 'host');
-    assert.deepEqual(manifest.host_modes, ['moderator']);
+    assert.deepEqual(manifest.host_modes, ['playing', 'moderator']);
+    assert.equal(manifest.default_host_mode, 'playing');
     const again = await authed(['game', 'new', 'ja-of-nee']);
     assert.equal(again.code, 1);
     assert.match(again.stderr, /Map bestaat al/);

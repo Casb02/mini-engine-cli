@@ -162,7 +162,8 @@ describe('me dev speaks the engine protocol', () => {
     assert.equal((await call(base, '/api/v1/rooms', { method: 'POST', body: { game_id: 'bestaat-niet' } })).json.error.code, 'game_not_found');
     const missing = await call(base, '/api/v1/rooms/QQQQQQ/info');
     assert.deepEqual([missing.status, missing.json.error.code], [404, 'room_not_found']);
-    const room = await host().createRoom({ game_id: gameId });
+    // The template plays along by default; these checks are about a host who only leads.
+    const room = await host().createRoom({ game_id: gameId, config: { host_mode: 'moderator' } });
     assert.equal(room.role, 'host');
     assert.equal(room.player_id, null);
     assert.equal(typeof room.display_token, 'string');
@@ -183,7 +184,7 @@ describe('me dev speaks the engine protocol', () => {
   });
 
   test('a full round: ready, start, actions, versioned state, realtime and awards', async () => {
-    const credentials = await host().createRoom({ game_id: gameId });
+    const credentials = await host().createRoom({ game_id: gameId, config: { host_mode: 'moderator' } });
     const daniSeat = await player(0).joinRoom(credentials.code, 'Dani');
     const sanderSeat = await player(1).joinRoom(credentials.code, 'Sander');
     const hostClient = open(credentials);
