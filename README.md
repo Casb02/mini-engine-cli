@@ -78,7 +78,7 @@ Elk commando heeft `--help`, bijvoorbeeld `me game upload --help`.
 
 ### AI-skills
 
-De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engine-game` en `design-mini-engine-game-ui`.
+De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engine-game`, `design-mini-engine-game-ui` en `mini-engine-ui` (MiniEngineUI, de rustige stijl van de demospellen als kant-en-klare kit).
 
 | Commando | Doet |
 | --- | --- |

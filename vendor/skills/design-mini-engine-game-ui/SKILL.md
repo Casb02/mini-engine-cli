@@ -9,6 +9,8 @@ description: Use when creating or reviewing the host, player or display pages of
 
 One game, three devices at three distances. Each game has its **own atmosphere** drawn from its theme (quiz studio, detective noir, garden party…); it does not copy the engine's `/demo` look, wordmark or fonts, and does not load `/static/*` files. The only shared branding is the product name, Mini Engine, where you mention it at all.
 
+Exception: when the user chose **MiniEngineUI**, the look comes from the mini-engine-ui skill and its kit (the calm shell of the demo games, copied into the game). Then skip "Atmosphere without noise" below in favour of that skill; everything else here still applies.
+
 ## The three pages
 
 | Page | Device and distance | Design for |

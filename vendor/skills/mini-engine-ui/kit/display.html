@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>__TITLE__ · Display</title>
+  <link rel="stylesheet" href="/games/__SLUG__/assets/ui/mini-engine-ui.css">
+  <link rel="stylesheet" href="/games/__SLUG__/assets/style.css">
+</head>
+<body data-role="display" data-theme="nacht">
+  <div class="me-page">
+    <header class="me-bar">
+      <span class="me-bar-name">__TITLE__</span>
+      <div class="me-bar-end"><span class="me-muted">Join with code</span><span class="me-code" id="code"></span></div>
+    </header>
+    <div class="me-notices"><p id="error" class="me-notice is-error" role="alert"></p></div>
+    <main class="me-stage">
+      <div class="me-wide">
+        <section class="me-surface me-stack">
+          <h1 id="prompt" class="me-title">Connecting…</h1>
+          <p id="status" class="me-status" role="status">Waiting for the room.</p>
+          <div class="me-tally" aria-label="Votes">
+            <div class="me-card"><strong id="yes" class="me-big">0</strong><span class="me-label">Yes</span></div>
+            <div class="me-card"><strong id="no" class="me-big">0</strong><span class="me-label">No</span></div>
+          </div>
+        </section>
+        <ul id="players" class="me-roster" aria-label="Players"></ul>
+        <section id="player-controls" hidden><button id="ready">I'm ready</button><button id="vote-yes">Yes</button><button id="vote-no">No</button><p id="my-vote"></p></section>
+        <section id="host-controls" hidden><button id="start">Start</button><button id="finish">Finish</button><button id="reset">Reset</button></section>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/games/__SLUG__/assets/app.js"></script>
+</body>
+</html>

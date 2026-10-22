@@ -1,19 +1,29 @@
 {
   "sdk": {
     "name": "@casb02/mini-engine-sdk",
-    "version": "0.3.1",
-    "commit": "4f7875ce338d401754714638b9d6f83b0269d08e",
+    "version": "0.3.2",
+    "commit": "348fdc3533ec474f59fedf011711919e39bb17a8",
     "dirty": false
   },
   "files": {
     "sdk/bin/templates.mjs": "7e6867dfc9f10545d5b039490202b6217c38e8fae637907ac22ac5d931644629",
-    "sdk/types/mini-engine.d.ts": "1ae85e71fe5d9c24830550e48e172456b9bc606cdf1517405c42f1e28367c3ec",
-    "skills/build-mini-engine-game/SKILL.md": "9a88b4930434ef61d58122c9fedf91ab4df127c082b5eeeb90eedc51599767d1",
+    "sdk/types/mini-engine.d.ts": "9eb2dae2e0e83ec5c22e9dfa74a614fd2292f720c052867fbb5205264c63c7ef",
+    "skills/build-mini-engine-game/SKILL.md": "3ba0c67ee88e9fed61ead3fba4e1833dc8debd81b70e51b03d4e55e115fa55e9",
     "skills/build-mini-engine-game/references/host-runtime-patterns.md": "bb83ec1ada7dfcca20774c1f3af1def3804a52a9f85235bc7536f31e1ca0b393",
     "skills/build-mini-engine-game/references/manifest-and-settings.md": "720c2fa8abd140c7af222c536eb5f102340422389ac63641b6b6f4dbd6521395",
     "skills/build-mini-engine-game/references/sdk-api.md": "0bb2cda75589590875dd39bdeae0c317aa7731a773a343dc9e72ee938699684d",
     "skills/build-mini-engine-game/references/verify-and-troubleshoot.md": "31135369310de70d1dd727a1429fe217247cb9949e137c1db1a5a348a05764ea",
-    "skills/build-mini-engine-game/scripts/play.mjs": "38b652da4426bd7d11aee4a7ad507d7002e0f07712794b4dedddd6e266d0fb4d",
-    "skills/design-mini-engine-game-ui/SKILL.md": "2ca143b47903717d2efcf62a6e7a324a5908ad792ffeef3c90f3f5de0efe8a29"
+    "skills/build-mini-engine-game/scripts/play.mjs": "2d252ef24d8a6a36d7ddd0db0c4dd45130f5b48dd24897a2c1a989cb2b5e509d",
+    "skills/design-mini-engine-game-ui/SKILL.md": "bc301ca9130d0a0f0f03956a53bd1aec3923676a331b5d4eb2d32c43f1e01fd5",
+    "skills/mini-engine-ui/SKILL.md": "47fbc3ae93e3eab58ca88ae70aa58ada4721e4877cea465971fb9016b7ac283d",
+    "skills/mini-engine-ui/kit/display.html": "5845a36e72c9a0a5bb68e2b9005d41fe231dc255971f43db54254c3c7d17ee18",
+    "skills/mini-engine-ui/kit/host.html": "69478a902ce9db94dc95720799c7390fd09f0792388435e27c0c7a55a99c1ab6",
+    "skills/mini-engine-ui/kit/player.html": "eb1020a850767ded4afb2a868950cb88744e9ee892cc659dbeba3eb1e9750a58",
+    "skills/mini-engine-ui/kit/ui/fonts/DM-Sans-OFL.txt": "2af94f4fb533be8fa23282eb33e08ca311ddf47c2f32777e2040b282deeec65c",
+    "skills/mini-engine-ui/kit/ui/fonts/Space-Grotesk-OFL.txt": "c6dec685825f73b18c20926fddc65e8315642e12986f15db0699170940a09efc",
+    "skills/mini-engine-ui/kit/ui/fonts/dm-sans.woff2": "b23b58d9fe4d2c0a02395597109e8dc6c234a653dd080abd6a6eaf5fda784249",
+    "skills/mini-engine-ui/kit/ui/fonts/space-grotesk.woff2": "2c183fe0541ea50e3a17cc677b4995fdfafe92588457af970618d2ad607fe855",
+    "skills/mini-engine-ui/kit/ui/mini-engine-ui.css": "6de1cff5ef2a4002ffd8bc5862528370ab2c012ebbf806e3ec8f782da6cb88e4",
+    "skills/mini-engine-ui/references/components.md": "a461571e820f8749847f6d898d4a09496d54233775d7737f17e486201a3649c7"
   }
 }
