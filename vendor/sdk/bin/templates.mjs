@@ -95,13 +95,14 @@ A trusted **host-runtime** vote game for Mini Engine 0.5.2 or later. The host ta
 
 ## Run in five minutes
 
-1. Put this whole directory at games/${slug}/ in your Mini Engine checkout.
-2. Restart the engine from its project root (cargo run). If your server uses another games directory, put it there instead.
-3. Open the engine's /home, select **${title}**, and create a room. Everyone plays, you too ("Iedereen doet mee"); pick TV in the form to make this screen show the vote instead.
-4. Join from another browser/device using the room code, then click **I'm ready**. Your own seat as host is always ready.
-5. On the host, click **Start voting**. Vote on the host and player screens; optionally open a display.
+1. Install the Mini Engine CLI once: npm install -g github:Casb02/mini-engine-cli
+2. In this directory, run me dev. It opens the host, the shared display and two players side by side.
+3. Everyone plays, you too ("Iedereen doet mee"). Click **I'm ready** on both players; your own seat as host is always ready.
+4. On the host, click **Start voting**. Vote on the host and player seats. Saving a file reloads the seats and keeps the room.
 
-The generated HTML imports the SDK served by your engine at /sdk/mini-engine.js. Do not open the HTML files with file:// or a generic static server: the engine supplies room sessions, HTTP and WebSocket routes.
+To play it with friends, publish it with a dev key from whoever runs the Mini Engine server you publish to: me auth, then me game upload. The first upload of a new game is live at once; later versions need me game upload --activate. On the server, pick TV in the create form to make the creating screen show the vote instead.
+
+The generated HTML imports the SDK at /sdk/mini-engine.js, which Mini Engine and me dev serve. Do not open the HTML files with file:// or a generic static server: the pages need room sessions, HTTP and WebSocket routes.
 
 ## Make it yours
 
@@ -112,15 +113,15 @@ The generated HTML imports the SDK served by your engine at /sdk/mini-engine.js.
 
 ## Editor types
 
-assets/app.js is plain JavaScript with JSDoc types, so the browser runs it unchanged. jsconfig.json maps the import specifier /sdk/mini-engine.js to the SDK's type declarations: inside a Mini Engine checkout (games/${slug}/) it uses the engine's own web/mini-engine.d.ts, which always matches the SDK the engine serves; elsewhere it uses the bundled copy in types/mini-engine.d.ts. VS Code and other TypeScript-based editors pick this up automatically: you get completion for MiniEngine, room snapshots and settings, and wrong SDK calls are underlined. To check from a terminal:
+assets/app.js is plain JavaScript with JSDoc types, so the browser runs it unchanged. jsconfig.json maps the import specifier /sdk/mini-engine.js to the SDK's type declarations in types/mini-engine.d.ts. VS Code and other TypeScript-based editors pick this up automatically: you get completion for MiniEngine, room snapshots and settings, and wrong SDK calls are underlined. To check from a terminal:
 
     npx -p typescript tsc -p jsconfig.json
 
-jsconfig.json and types/ are editor files: the engine only serves files under assets/ and ignores them. Describe your own state and settings shapes in the @typedef lines at the top of assets/app.js.
+jsconfig.json and types/ are editor files: only files under assets/ are served. Describe your own state and settings shapes in the @typedef lines at the top of assets/app.js.
 
 The room snapshot is authoritative. A request acknowledgement means the action reached the host queue; it does not confirm durable processing for host-runtime games. The SDK never replays actions automatically. New rounds reset votes; the room's prompt and allow_change settings are chosen in the create form and stay fixed while people play.
 
-Game packages are locally trusted code, not sandboxed uploads. Review a package before installing it.
+Games run as trusted code on the server's origin, not in a sandbox: never read or send a player's account token from game code.
 `,
   };
 }

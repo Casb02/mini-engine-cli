@@ -1,12 +1,12 @@
 # Package layout, manifest and settings schema
 
-Source of truth: the engine's `src/catalog.rs` (validation at startup), `src/set_schema.rs` (the set schema dialect) and `docs/GAME-DEVELOPMENT.md`.
+Source of truth: the checks in `me dev` and `me game upload`, which follow the server's rules, and the docs at docs.miniengine.nl (*Package en manifest*, *Eigen sets*).
 
 ## Package layout
 
 ```text
-games/<id>/
-  manifest.json        required; "id" must equal the directory name
+<id>/
+  manifest.json        required; "id" is the game's id (the scaffold uses the slug for id and folder)
   host.html            required
   player.html          required
   display.html         required when has_display is true
@@ -18,10 +18,10 @@ games/<id>/
   data.json            optional private JSON; only the host can read it (ApiClient.gameData)
   jsconfig.json        editor/tsc config from the scaffold — not served
   types/mini-engine.d.ts  SDK declarations from the scaffold — not served
-  README.md, tests/    allowed; loaded but never served
+  README.md, tests/    allowed; never served (me game upload skips tests/)
 ```
 
-Catalog limits: game id `^[a-z0-9-]{1,48}$` (the scaffolder additionally requires a leading letter and single hyphens); every file ≤ 2 MiB; package ≤ 10 MiB and ≤ 4096 files; nesting ≤ 32 levels; no symlinks; filenames without backslashes; HTML must be UTF-8; `data.json` must be valid JSON. Do **not** run `npm install` inside a game directory — `node_modules` counts against these limits.
+Package limits: game id `^[a-z0-9-]{1,48}$` (the scaffolder additionally requires a leading letter and single hyphens); every file ≤ 2 MiB; package ≤ 10 MiB and ≤ 4096 files; nesting ≤ 32 levels, paths ≤ 255 bytes; no symlinks; filenames without backslashes; HTML must be UTF-8; `data.json` must be valid JSON. An upload is ≤ 16 MiB; an account has ≤ 10 games and a game keeps ≤ 10 versions. `me dev` and `me game upload` skip hidden files, `node_modules/` (at any depth), the top-level `tests/` and `.meignore` patterns, so a local `npm install --no-save playwright` for tests does not count.
 
 Role pages are served from `/api/v1/games/<id>/<role>`, so reference assets with absolute paths: `<link rel="stylesheet" href="/games/<id>/assets/style.css">`, `<script type="module" src="/games/<id>/assets/app.js"></script>`.
 
@@ -62,7 +62,7 @@ Role pages are served from `/api/v1/games/<id>/<role>`, so reference assets with
 | `version` | Non-empty, ≤ 100 chars (free text; use semver). |
 | `min_players` / `max_players` | `1 ≤ min ≤ max ≤ 100`. A room's capacity is chosen at creation between them (default `min(max_players, 24)`). `min_players` is **not** enforced at start — check it in your host UI if it matters. Both count the host's seat when the host plays along. |
 | `has_display` | `true` requires `display.html`. `false` makes rooms with `display_enabled` invalid. |
-| `runtime` | `"host"` (default). `"server"` is only for built-in Rust games. |
+| `runtime` | `"host"` (default). `"server"` is only for the built-in games. |
 | `host_modes` / `default_host_mode` | For `runtime: "host"`: any non-empty subset of `["playing", "tv", "moderator"]`, no duplicates; `default_host_mode` must be in it. Omitted → `["moderator"]` / `"moderator"`. `hostless` is refused (`Invalid runtime or unsupported host modes.`): a browser-host game needs its host tab as referee. Party games (board, card, dice, drawing): `["playing", "tv"]` with `"playing"`. A neutral leader (quiz master): `["moderator"]`, optionally with `"playing"`. `playing` needs engine 0.5.1+, `tv` 0.5.2+. |
 | `icon` | Optional (0.5.1+): `"assets/<name>.svg"`. Absent → the engine's own mark (the game's initial on a tile). Rules below. |
 | `supports_late_join` | Default `true`. Set `false` unless the host logic handles players appearing during `running`. The room still has to opt in with `allow_late_join`. |
@@ -70,7 +70,7 @@ Role pages are served from `/api/v1/games/<id>/<role>`, so reference assets with
 | `achievements` | Optional (0.5+), ≤ 50: `[{id, title, description}]`. `id` `^[a-z0-9][a-z0-9_-]{0,47}$`, unique; `title` 1–60 chars; `description` 1–160 chars; no control characters. Public through `GET /api/v1/games`. The host awards them (see `host-runtime-patterns.md`). |
 | `set_kinds` | Optional (0.5+), ≤ 4: `[{id, title, description, schema}]`. `id`, `title` and `description` follow the achievement rules; `schema` uses the set schema dialect below. Players save sets of these kinds on their account and pick one for a room. |
 
-The engine reads only the fields above. Anything else in `manifest.json` is ignored without a warning, so a misspelt field (`achievement`, `setKinds`) silently does nothing: check `GET /api/v1/games/<id>` after a restart. An engine older than 0.5 ignores `achievements` and `set_kinds` the same way; the game still loads there, without them. An engine older than 0.5.1 ignores `icon` but refuses `playing` in `host_modes` for a host game; an engine older than 0.5.2 refuses `tv`.
+The engine reads only the fields above. Anything else in `manifest.json` is ignored without a warning, so a misspelt field (`achievement`, `setKinds`) silently does nothing: check `curl -s http://127.0.0.1:3170/api/v1/games/<id>` while `me dev` runs (or the server after an upload). A server older than Mini Engine 0.5 ignores `achievements` and `set_kinds` the same way; the game still loads there, without them. One older than 0.5.1 ignores `icon` but refuses `playing` in `host_modes` for a host game; one older than 0.5.2 refuses `tv`.
 
 ## host_modes: who the creator is
 
@@ -93,7 +93,7 @@ The person creating the room picks one of the declared modes in the create form;
 | Path | Starts with `assets/`, ends with `.svg`, exists in the package. |
 | File | ≤ 64 KiB, valid UTF-8, contains `<svg`. |
 | Refused | `<script`, `<foreignobject`, `javascript:` or any `on…=` event attribute, case-insensitive. |
-| Error | `Invalid icon: <reason>.` — at engine start, on `me game upload` and in `me dev`. |
+| Error | `manifest.json: icon …` from `me dev` and `me game upload`; `Invalid icon: <reason>.` from the server. |
 
 `GET /api/v1/games` and `GET /api/v1/games/<id>` return `icon` as declared (omitted when absent). `/home`, the games list and the create form load it from `/games/<id>/<icon>?v=<version>` as `<img alt="">` in a 52 px tile. Draw it as a square `viewBox="0 0 48 48"`, a full tile with its own background (`rx="12"`), one or two simple shapes in the game's colours; no text, no external references, no fonts.
 
@@ -104,7 +104,7 @@ Settings are chosen in the create form (from `settings_schema`, starting at `def
 ## settings_schema (a strict JSON Schema subset)
 
 - Top level: exactly `type: "object"`, `properties`, `additionalProperties: false`; optional `required` (unique names of declared properties), `title`, `description`, `default`.
-- Property keys allowed: `type`, `enum`, `minimum`, `maximum`, `maxLength`, `title`, `description`, `default`. Anything else (`$ref`, `pattern`, `items`, `minLength`, nested objects, arrays) makes the engine refuse to start: `Unsupported settings schema feature: <key>`.
+- Property keys allowed: `type`, `enum`, `minimum`, `maximum`, `maxLength`, `title`, `description`, `default`. Anything else (`$ref`, `pattern`, `items`, `minLength`, nested objects, arrays) makes `me dev`, `me game upload` and the server refuse the game: `Unsupported settings schema feature: <key>`.
 - `type` ∈ `integer`, `number`, `string`, `boolean`. `minimum`/`maximum` only on numeric types (and `min ≤ max`); `maxLength` only on strings; `enum` non-empty, no duplicates, every value valid for the type.
 - `title`/`description` must be strings; `/home` uses them to label the settings form.
 - Settings objects are ≤ 8 KiB. `setSettings` replaces the whole object and is validated against the schema; when creating a room, given settings are merged over `default_settings`.
@@ -155,7 +155,7 @@ A set kind describes content players may make for your game, such as their own q
 }]
 ```
 
-The dialect is a small, bounded part of JSON Schema, checked when the game loads (an invalid schema stops the engine or refuses the upload):
+The dialect is a small, bounded part of JSON Schema, checked by `me dev`, `me game upload` and the server (an invalid schema refuses the game):
 
 | `type` | Allowed keys besides `title` and `description` |
 | --- | --- |

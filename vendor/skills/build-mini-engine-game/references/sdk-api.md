@@ -1,6 +1,6 @@
 # SDK API for game pages
 
-Game pages import the bundle the engine serves: `import { … } from '/sdk/mini-engine.js'`. The full typed surface is the single file `types/mini-engine.d.ts` (copied into every scaffolded game; in an engine checkout also `web/mini-engine.d.ts`). When in doubt, read that file — it is the contract. Engines with the declaration route also serve it at `/sdk/mini-engine.d.ts`.
+Game pages import the bundle the engine serves: `import { … } from '/sdk/mini-engine.js'`. The full typed surface is the single file `types/mini-engine.d.ts` (copied into every scaffolded game). When in doubt, read that file — it is the contract. Mini Engine and `me dev` also serve it at `/sdk/mini-engine.d.ts`.
 
 ## Session → client
 
@@ -41,7 +41,7 @@ Outstanding requests reject on disconnect or timeout (`request_timeout`, `discon
 
 ## Realtime (0.5+)
 
-Events and values are never stored, versioned or put in a snapshot, and they can be lost under load (a slow receiver skips them). They have no order relative to snapshots and acks: sort by `ts` when order matters. Names (`channel`, `key`): 1–64 of `A-Za-z0-9_.:-`; `data`/`value`: JSON ≤ 2 KiB. An invalid message gives an `error` event (`invalid_request`); the socket stays open. Per connection 60 realtime messages/s, bursts of 120, apart from the command budget; over it messages are dropped and `throttled` reports the count at most once per 5 s. Values: ≤ 64 keys per sender, ≤ 256 KiB per room. A player's values vanish when they leave; all values vanish when the room closes or the engine restarts.
+Events and values are never stored, versioned or put in a snapshot, and they can be lost under load (a slow receiver skips them). They have no order relative to snapshots and acks: sort by `ts` when order matters. Names (`channel`, `key`): 1–64 of `A-Za-z0-9_.:-`; `data`/`value`: JSON ≤ 2 KiB. An invalid message gives an `error` event (`invalid_request`); the socket stays open. Per connection 60 realtime messages/s, bursts of 120, apart from the command budget; over it messages are dropped and `throttled` reports the count at most once per 5 s. Values: ≤ 64 keys per sender, ≤ 256 KiB per room. A player's values vanish when they leave; all values vanish when the room closes or the server restarts.
 
 ## Snapshot (`room`)
 
