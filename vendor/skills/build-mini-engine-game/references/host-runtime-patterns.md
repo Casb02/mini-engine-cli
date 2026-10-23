@@ -77,6 +77,8 @@ Keep `logic.js` free of DOM and SDK imports so the tests run in Node. Remember `
 
 `run`, `showError`, `button`, `role` and `session` are the helpers at the top of the scaffolded `assets/app.js`.
 
+Snapshots arrive with object keys sorted (the engine and `me dev` serialize JSON that way), so never decide "has it changed?" with `JSON.stringify(a) === JSON.stringify(b)` against what you published: that is always different and republishes on every snapshot, forever. Compare the fields that matter, or use a key-order-independent compare.
+
 ```js
 import { MiniEngine, loadSession } from '/sdk/mini-engine.js';
 import { newGame, pick, reveal, nextRound } from './logic.js';
