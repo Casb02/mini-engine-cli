@@ -87,7 +87,8 @@ export const devCommands = [
       'verschijnen in de terminal.',
       '',
       'Standaard luistert me dev alleen op deze computer (127.0.0.1). Met --lan doen telefoons op hetzelfde wifi mee:',
-      'ze openen het adres dat me dev toont en kiezen een naam. Iedereen op dat netwerk kan dan meedoen.',
+      'ze openen het adres dat me dev toont en kiezen een naam (hoogstens 8 telefoons). Alleen die aanmeldpagina en de',
+      'stoelen van de telefoons staan op het netwerk; het overzicht en de andere stoelen blijven op deze computer.',
     ].join('\n'),
     options: { port: { type: 'string' }, players: { type: 'string' }, set: { type: 'string' }, lan: { type: 'boolean' }, 'no-open': { type: 'boolean' } },
     optionHelp: [

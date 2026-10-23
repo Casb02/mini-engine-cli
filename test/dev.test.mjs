@@ -767,8 +767,10 @@ describe('me dev --lan lets phones on the same network join', { skip: PARITY_URL
   let cleanup;
   const running = [];
   const lanHost = lanAddresses()[0];
+  const clients = [];
   before(async () => ({ home, cleanup } = await tempHome()));
   after(async () => {
+    for (const client of clients) client.close();
     for (const run of running) await run.stop();
     await cleanup();
   });
@@ -777,53 +779,86 @@ describe('me dev --lan lets phones on the same network join', { skip: PARITY_URL
     running.push(run);
     return run.ready();
   };
-  /** A request to 127.0.0.1 that says it is for another host, the way a phone on the network would address it. */
-  const asHost = (url, host, { method = 'GET', body } = {}) =>
+  /** A request to 127.0.0.1 that names another host, the way a DNS-rebinding page would. */
+  const asHost = (url, host) =>
     new Promise((resolve, reject) => {
       const target = new URL(url);
-      const req = httpRequest({ hostname: '127.0.0.1', port: target.port, path: target.pathname, method, headers: { host: `${host}:${target.port}`, ...(body ? { 'content-type': 'application/json', origin: `http://${host}:${target.port}` } : {}) } }, res => {
-        let text = '';
-        res.on('data', chunk => (text += chunk));
-        res.on('end', () => resolve({ status: res.statusCode, text, json: () => JSON.parse(text) }));
+      const req = httpRequest({ hostname: '127.0.0.1', port: target.port, path: target.pathname, headers: { host: `${host}:${target.port}` } }, res => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
       });
       req.on('error', reject);
-      req.end(body ? JSON.stringify(body) : undefined);
+      req.end();
     });
+  const refused = url => fetch(url).then(() => false, () => true);
 
   test('without --lan only this computer is answered and there is no join page', async () => {
     await writeGame(home, 'thuis');
     const dev = await launch(['thuis', '--port', '0']);
     assert.doesNotMatch(dev.stdout, /wifi/);
-    assert.equal((await asHost(dev.url, '192.168.1.20')).status, 421);
+    assert.equal(await asHost(dev.url, '192.168.1.20'), 421);
     assert.equal((await call(dev.url, '/join')).status, 404);
     assert.equal((await call(dev.url, '/__me/join', { method: 'POST', body: {} })).status, 404);
   });
 
-  test('with --lan a phone opens the join page, picks a name and gets its own seat', async () => {
+  test('with --lan only the join page and the phone seats are on the network; a phone joins with a name', async () => {
     await writeGame(home, 'feest');
     const dev = await launch(['feest', '--port', '0', '--lan']);
     const state = await (await fetch(`${dev.url}/__me/state`)).json();
+    const join = state.join ? new URL(state.join) : null;
     if (lanHost) {
       assert.match(dev.stdout, new RegExp(`Telefoons op hetzelfde wifi: http://${lanHost.replace(/\./g, '\\.')}:\\d+/join\\nIedereen op dit netwerk kan meedoen`));
-      assert.equal(state.join, `http://${lanHost}:${new URL(dev.url).port}/join`);
-      const page = await asHost(dev.url, lanHost);
-      assert.equal(page.status, 200, 'the network address is answered');
-      assert.equal((await asHost(`${dev.url}/join`, lanHost)).status, 200);
+      assert.equal(join?.hostname, lanHost);
+      assert.ok(await refused(`http://${lanHost}:${new URL(dev.url).port}/__me/state`), 'the overview stays on 127.0.0.1');
     }
-    assert.equal((await asHost(dev.url, 'evil.example')).status, 421, 'other host names stay refused');
-    const join = await call(dev.url, '/join');
-    assert.equal(join.status, 200);
-    assert.match(join.text, /<script type="module" src="\/__me\/join\.js">/);
-    const seat = (await call(dev.url, '/__me/join', { method: 'POST', body: { name: 'Pim' } })).json;
+    const joinBase = `http://127.0.0.1:${join ? join.port : /:(\d+)\/join/.exec(dev.stdout)?.[1]}`;
+    assert.equal((await call(joinBase, '/join')).status, 200);
+    assert.deepEqual((await call(joinBase, '/__me/join/info')).json, { title: 'Feest', open: true });
+    for (const [path, method] of [['/__me/state', 'GET'], ['/__me/events', 'GET'], ['/__me/room', 'POST'], ['/__me/players', 'POST'], ['/api/v1/rooms', 'POST']]) {
+      assert.equal((await call(joinBase, path, { method, body: method === 'POST' ? {} : undefined })).status, 403, `${method} ${path} on the join port`);
+    }
+    const seat = (await call(joinBase, '/__me/join', { method: 'POST', body: { name: 'Pim' } })).json;
     assert.deepEqual([seat.role, seat.label, seat.remote], ['player', 'Pim', true]);
     const credential = JSON.parse(decodeURIComponent(seat.hash));
-    const client = await connect(`http://127.0.0.1:${seat.port}`, credential).waitForSnapshot();
-    assert.ok(client.players.some(player => player.name === 'Pim'));
-    const after = await (await fetch(`${dev.url}/__me/state`)).json();
-    assert.equal(after.seats.find(entry => entry.label === 'Pim').remote, true);
-    const taken = await call(dev.url, '/__me/join', { method: 'POST', body: { name: 'pim' } });
-    assert.equal(taken.json.error.code, 'name_taken');
+    const client = connect(`http://127.0.0.1:${seat.port}`, credential);
+    clients.push(client);
+    assert.ok((await client.waitForSnapshot()).players.some(player => player.name === 'Pim'));
+    assert.equal((await (await fetch(`${dev.url}/__me/state`)).json()).seats.find(entry => entry.label === 'Pim').remote, true);
+    assert.equal((await call(joinBase, '/__me/join', { method: 'POST', body: { name: 'pim' } })).json.error.code, 'name_taken');
+
+    if (lanHost) {
+      // From the network: the phone's own seat works, everything else is refused.
+      const phone = `http://${lanHost}:${seat.port}`;
+      assert.equal((await call(phone, `/room/${credential.code}/player`)).status, 200);
+      assert.equal((await call(phone, '/sdk/mini-engine.js')).status, 200);
+      assert.equal((await call(phone, `/api/v1/rooms/${credential.code}`, { token: credential.token })).status, 200);
+      for (const [path, method] of [['/__me/state', 'GET'], ['/__me/events', 'GET'], ['/__me/room', 'POST'], ['/__me/players', 'POST'], ['/api/v1/rooms', 'POST'], [`/room/${credential.code}/host`, 'GET'], [`/api/v1/rooms/${credential.code}/display-token`, 'POST']]) {
+        assert.equal((await call(phone, path, { method, body: method === 'POST' ? {} : undefined })).status, 403, `${method} ${path} from the network`);
+      }
+      const info = await call(`http://${lanHost}:${join.port}`, '/__me/join/info');
+      assert.deepEqual(info.json, { title: 'Feest', open: true }, 'the join page learns the title, no seats');
+      const localSeat = state.seats.find(entry => entry.role === 'host');
+      assert.ok(await refused(`http://${lanHost}:${localSeat.port}/`), 'seats on this computer stay on 127.0.0.1');
+    }
+  });
+
+  test('at most eight phones; a new room closes their seats', async () => {
+    await writeGame(home, 'druk');
+    const dev = await launch(['druk', '--port', '0', '--lan']);
+    const state = await (await fetch(`${dev.url}/__me/state`)).json();
+    const joinBase = `http://127.0.0.1:${state.join ? new URL(state.join).port : /:(\d+)\/join/.exec(dev.stdout)?.[1]}`;
+    const ports = [];
+    for (let index = 1; index <= 8; index += 1) {
+      const seat = (await call(joinBase, '/__me/join', { method: 'POST', body: { name: `Telefoon ${index}` } })).json;
+      ports.push(seat.port);
+    }
+    const full = await call(joinBase, '/__me/join', { method: 'POST', body: { name: 'Nog een' } });
+    assert.equal(full.status, 409);
+    assert.equal(full.json.error.code, 'phones_full');
+    assert.equal((await call(`http://127.0.0.1:${ports[0]}`, '/sdk/mini-engine.js')).status, 200);
     const fresh = await (await fetch(`${dev.url}/__me/room`, { method: 'POST' })).json();
-    assert.ok(!fresh.seats.some(entry => entry.label === 'Pim'), 'a new room drops the phones; they join again');
+    assert.ok(!fresh.seats.some(entry => entry.remote), 'a new room drops the phones');
+    for (const port of ports) assert.ok(await refused(`http://127.0.0.1:${port}/sdk/mini-engine.js`), `the seat on port ${port} is closed`);
+    assert.equal((await call(joinBase, '/__me/join', { method: 'POST', body: { name: 'Pim' } })).status, 200, 'phones can join the new room');
   });
 });

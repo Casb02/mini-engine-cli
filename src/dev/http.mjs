@@ -124,13 +124,36 @@ const json = (status, value) => ({ status, type: 'application/json', body: strin
 const bytes = (body, type) => ({ status: 200, type, body });
 const empty = () => ({ status: 204 });
 
-export function createApp({ engine, project, session, launcherPort, lanHosts = [], phones = false }) {
+const LOOPBACK = /^(?:127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+/** Decided on the connection itself, never on a header the client writes. */
+export const isLoopback = address => LOOPBACK.test(address ?? '');
+
+// With --lan, a phone may use only what a player seat needs, and on the join port only the join page.
+const PHONE_SEAT_ROUTES = new Set([
+  'GET /room/:code/:role',
+  'GET /__me/seat.js',
+  'GET /__me/seat.css',
+  'GET /__me/favicon.svg',
+  'GET /__me/fonts/:name',
+  'GET /sdk/mini-engine.js',
+  'GET /api/v1/games/:id/:role',
+  'GET /games/:id/*path',
+  'GET /releases/:id/:version/*path',
+  'GET /api/v1/rooms/:code/info',
+  'GET /api/v1/rooms/:code',
+  'POST /api/v1/rooms/:code/ready',
+  'POST /api/v1/rooms/:code/actions',
+  'POST /api/v1/rooms/:code/leave',
+]);
+const JOIN_ROUTES = new Set(['GET /join', 'GET /__me/join.js', 'GET /__me/join/info', 'POST /__me/join', 'GET /__me/launcher.css', 'GET /__me/favicon.svg', 'GET /__me/fonts/:name']);
+const forbidden = () => new EngineError(403, 'forbidden', 'Dit kan alleen op de computer waarop me dev draait.');
+
+export function createApp({ engine, project, session, launcherPort, lanHosts = [], joinPort = () => null, phonePorts = () => new Set() }) {
   const sockets = new Set();
   const streams = new Set();
-  const hosts = ['127.0.0.1', 'localhost', ...lanHosts];
-  const launcherOrigins = () => hosts.map(host => `http://${host}:${launcherPort()}`);
+  const launcherOrigins = () => [`http://127.0.0.1:${launcherPort()}`, `http://localhost:${launcherPort()}`];
   const engineCsp = () => csp(`'self' ${launcherOrigins().join(' ')}`);
-  const launcherCsp = () => `${csp("'none'", hosts.map(host => `http://${host}:*`).join(' '))}; font-src 'self'`;
+  const launcherCsp = () => `${csp("'none'", 'http://127.0.0.1:* http://localhost:*')}; font-src 'self'`;
 
   function headers(contentType, policy = engineCsp()) {
     const out = {
@@ -143,17 +166,31 @@ export function createApp({ engine, project, session, launcherPort, lanHosts = [
     return out;
   }
 
+  /** Returns whether the client is this computer. The Host check keeps DNS rebinding out. */
   function checkOrigin(req) {
     const host = req.headers.host ?? '';
+    const local = isLoopback(req.socket.remoteAddress);
+    const named = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/i.test(host);
     const lan = lanHosts.includes(host.replace(/:\d{1,5}$/, ''));
-    if (!lan && !/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/i.test(host)) {
+    if (local ? !named && !lan : !lan) {
       throw new EngineError(421, 'host_forbidden', 'me dev beantwoordt alleen verzoeken aan 127.0.0.1 of localhost, en met --lan aan het netwerkadres van deze computer.');
     }
     const origin = req.headers.origin;
-    if (origin === undefined) return;
-    if (origin !== `http://${host}` && origin !== `https://${host}`) {
+    if (origin !== undefined && origin !== `http://${host}` && origin !== `https://${host}`) {
       throw new EngineError(403, 'origin_forbidden', 'Deze browser-origin is niet toegestaan.');
     }
+    return local;
+  }
+
+  /** The join port serves only the join page; other computers reach only the phone seats, and only what a player needs. */
+  function permit(req, local, found) {
+    const port = req.socket.localPort;
+    const atJoin = port === joinPort();
+    if (local && !atJoin) return;
+    if (!found || found === 'method') throw forbidden();
+    const key = `${found.route.method} ${found.route.pattern}`;
+    if (atJoin ? !JOIN_ROUTES.has(key) : !phonePorts().has(port) || !PHONE_SEAT_ROUTES.has(key)) throw forbidden();
+    if (!atJoin && found.params.role !== undefined && found.params.role !== 'player') throw forbidden();
   }
 
   function metadataFor(id) {
@@ -352,7 +389,7 @@ export function createApp({ engine, project, session, launcherPort, lanHosts = [
         return { status: 307, location: `http://${host}:${launcherPort()}/` };
       },
     ],
-  ].map(([method, pattern, handler]) => ({ method, ...compile(pattern), handler }));
+  ].map(([method, pattern, handler]) => ({ method, pattern, ...compile(pattern), handler }));
 
   const devRoutes = [
     ['GET', '/__me/launcher.js', () => bytes(web('launcher.js'), 'text/javascript')],
@@ -361,22 +398,23 @@ export function createApp({ engine, project, session, launcherPort, lanHosts = [
     ['GET', '/__me/events', (_, { req, res }) => ({ stream: () => openStream(req, res) })],
     ['POST', '/__me/room', async () => json(200, await session().newRoom())],
     ['POST', '/__me/players', async () => json(200, await session().addPlayer())],
-    ...(phones
-      ? [
-          ['GET', '/join', () => ({ ...bytes(web('join.html'), 'text/html; charset=utf-8'), policy: launcherCsp() })],
-          ['GET', '/__me/join.js', () => bytes(web('join.js'), 'text/javascript')],
-          ['GET', '/__me/qr.js', () => bytes(readFileSync(QR), 'text/javascript')],
-          [
-            'POST',
-            '/__me/join',
-            async (_, { req }) => {
-              const input = await readBody(req, { name: 'string?' });
-              return json(200, await session().addPhone(input.name));
-            },
-          ],
-        ]
-      : []),
-  ].map(([method, pattern, handler]) => ({ method, ...compile(pattern), handler }));
+    ['GET', '/__me/qr.js', () => bytes(readFileSync(QR), 'text/javascript')],
+  ].map(([method, pattern, handler]) => ({ method, pattern, ...compile(pattern), handler }));
+
+  const joinRoutes = [
+    ['GET', '/join', () => ({ ...bytes(web('join.html'), 'text/html; charset=utf-8'), policy: launcherCsp() })],
+    ['GET', '/__me/join.js', () => bytes(web('join.js'), 'text/javascript')],
+    ['GET', '/__me/launcher.css', () => bytes(web('launcher.css'), 'text/css')],
+    ['GET', '/__me/join/info', () => json(200, session().joinInfo())],
+    [
+      'POST',
+      '/__me/join',
+      async (_, { req }) => {
+        const input = await readBody(req, { name: 'string?' });
+        return json(200, await session().addPhone(input.name));
+      },
+    ],
+  ].map(([method, pattern, handler]) => ({ method, pattern, ...compile(pattern), handler }));
 
   function openStream(req, res) {
     res.writeHead(200, { ...headers('text/event-stream; charset=utf-8', launcherCsp()), connection: 'keep-alive' });
@@ -433,14 +471,17 @@ export function createApp({ engine, project, session, launcherPort, lanHosts = [
     const index = req.url.indexOf('?');
     const path = index >= 0 ? req.url.slice(0, index) : req.url;
     const query = new URLSearchParams(index >= 0 ? req.url.slice(index + 1) : '');
-    const launcher = req.socket.localPort === launcherPort();
+    const port = req.socket.localPort;
+    const launcher = port === launcherPort();
     try {
-      checkOrigin(req);
-      let found = launcher ? find(devRoutes, method, path) : null;
+      const local = checkOrigin(req);
+      const own = launcher ? devRoutes : port === joinPort() ? joinRoutes : null;
+      let found = own ? find(own, method, path) : null;
       if (!found || found === 'method') {
         const engineRoute = find(routes, method, path);
         if (engineRoute !== null) found = engineRoute;
       }
+      permit(req, local, found);
       if (found === 'method') throw new EngineError(405, 'method_not_allowed', 'Deze HTTP-methode is niet toegestaan.');
       if (!found) throw notFound('not_found', 'Niet gevonden.');
       const result = await found.route.handler(found.params, { req, res, query, launcher });
@@ -470,7 +511,9 @@ export function createApp({ engine, project, session, launcherPort, lanHosts = [
       rawRespond(socket, failure.status, 'application/json', stringify({ error: failure }));
     };
     try {
-      checkOrigin(req);
+      const local = checkOrigin(req);
+      const port = req.socket.localPort;
+      if (port === joinPort() || (!local && !phonePorts().has(port))) throw forbidden();
       const match = /^\/api\/v1\/rooms\/([^/]+)\/ws$/.exec(path);
       if (!match) throw notFound('not_found', 'Niet gevonden.');
       const problem = handshakeProblem(req);

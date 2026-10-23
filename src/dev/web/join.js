@@ -1,9 +1,9 @@
 const $ = selector => document.querySelector(selector);
 
-fetch('/__me/state')
+fetch('/__me/join/info')
   .then(response => response.json())
-  .then(state => {
-    $('#title').textContent = `Meedoen met ${state.game.title}`;
+  .then(info => {
+    $('#title').textContent = `Meedoen met ${info.title}`;
   })
   .catch(() => {});
 
