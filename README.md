@@ -5,7 +5,7 @@
 
 # Mini Engine CLI
 
-Met de Mini Engine CLI upload en beheer je je eigen partygames op een Mini Engine-server: een game maken vanuit het SDK-sjabloon, nieuwe versies uploaden, wisselen tussen versies en de game aan- of uitzetten. De eigenaar van de server beheert er ook de dev keys mee.
+Met de Mini Engine CLI maak, test en publiceer je je eigen partygames voor Mini Engine: een game maken vanuit het SDK-sjabloon, hem op je eigen computer spelen met `me dev`, nieuwe versies uploaden, wisselen tussen versies en de game aan- of uitzetten.
 
 De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig.
 
@@ -27,7 +27,7 @@ Controleer met `me --version`.
 
 ## Snel aan de slag
 
-Je hebt een dev key nodig. Die krijg je van de eigenaar van de server (zie [Beheer](#beheer)). Daarna:
+Om te publiceren heb je een dev key nodig. Die krijg je van wie de Mini Engine-server beheert waar je naar publiceert. Daarna:
 
 ```sh
 me setup
@@ -39,7 +39,8 @@ me setup
 me auth --server https://games.example.nl   # dev key plakken
 me game new ja-of-nee                         # maakt ./ja-of-nee
 cd ja-of-nee
-me game upload                                # eerste versie, meteen actief
+me dev                                        # spelen op je eigen computer, zonder dev key
+me game upload                                # eerste versie, meteen actief en zichtbaar
 ```
 
 Pas daarna de game aan, verhoog `version` in `manifest.json` en upload opnieuw:
@@ -101,7 +102,7 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 
 ### Beheer
 
-Voor de eigenaar van de server. Hiervoor heb je het admintoken nodig: de waarde van `MINI_ENGINE_ADMIN_TOKEN` waarmee de engine draait.
+Voor wie de server beheert. Hiervoor heb je het admintoken van de server nodig.
 
 | Commando | Doet |
 | --- | --- |
@@ -132,7 +133,9 @@ me dev
 
 `me dev` controleert eerst `manifest.json` zoals `me game upload` dat doet en start dan een kleine server die de engine nabootst voor games met `runtime: "host"`: kamers, spelers en klaar zijn, state met versies, acties naar de spelleider, realtime, achievements en game-data (of een eigen set met `--set`). In de browser zie je de spelleider, het tv-scherm en de spelers naast elkaar. Elke stoel draait op een eigen poort, dus elke speler heeft een eigen sessie, net als op een eigen telefoon. Met **Speler toevoegen** schuift er iemand aan, met **Nieuwe kamer** begin je opnieuw. Is `default_host_mode` `"playing"`, dan speelt de spelleider mee zoals op de echte engine: hij heeft een eigen stoel die altijd klaar staat, en elke snapshot heeft `host_player_id`.
 
-Pas je iets aan in de map, dan laden de stoelen opnieuw en blijft de kamer bestaan. Een fout in het manifest zie je in het overzicht en in de terminal. Gekregen achievements verschijnen in de terminal. Alles staat alleen in het geheugen; stoppen doe je met Ctrl+C.
+Pas je iets aan in de map, dan laden de stoelen opnieuw en blijft de kamer bestaan. Een fout in het manifest zie je in het overzicht en in de terminal. Gekregen achievements verschijnen in de terminal. De kamer krijgt de `default_host_mode` uit het manifest; wil je lokaal TV of een aparte spelleider proberen, zet die dan even als standaard. Alles staat alleen in het geheugen; stoppen doe je met Ctrl+C.
+
+Het overzicht en elke stoel bedienen dezelfde adressen als de server, zoals `/api/v1/rooms` en `/room/CODE/ROL`. Zo kan een script met Playwright een hele kamer bespelen; de skill `build-mini-engine-game` levert daarvoor `scripts/play.mjs`.
 
 `me dev` is een nabootsing. Hij volgt het protocol van de engine en de tests van de CLI draaien hem met dezelfde stappen als de echte engine, maar test je game voor een avond met vrienden ook een keer op een echte server, bijvoorbeeld met `me game upload` en een testversie.
 
@@ -155,9 +158,9 @@ ontwerp/
 assets/**/*.wav
 ```
 
-Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` gebruikt, dat `host_modes` een of beide van `"moderator"` en `"playing"` bevat (`"hostless"` is alleen voor ingebouwde games) met `default_host_mode` daarin, dat een eventueel `icon` klopt (zie hieronder) en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
+Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` gebruikt, dat `host_modes` een of meer van `"playing"`, `"tv"` en `"moderator"` bevat (`"hostless"` is alleen voor ingebouwde games) met `default_host_mode` daarin, dat een eventueel `icon` klopt (zie hieronder) en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
 
-De eerste versie van een nieuwe game wordt meteen actief. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
+De eerste versie van een nieuwe game wordt meteen actief: hij staat dan voor iedereen op de startpagina van die server. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
 
 Na een geslaagde upload van een actieve versie toont de CLI waar je de game start: `<server>/home/new/<id>`. Bij een server ouder dan 0.5 is dat nog `/demo/new/<id>`.
 
@@ -211,7 +214,7 @@ Het bestand krijgt rechten `0600` en de map `0700`. Omgevingsvariabelen gaan voo
 
 | Variabele | Waarvoor |
 | --- | --- |
-| `MINIENGINE_SERVER` | Server-URL (standaard `https://miniengine.nl`; lokaal `http://localhost:3000`) |
+| `MINIENGINE_SERVER` | Server-URL (standaard `https://miniengine.nl`) |
 | `MINIENGINE_TOKEN` | Dev key |
 | `MINIENGINE_ADMIN_TOKEN` | Admintoken |
 
@@ -237,7 +240,7 @@ me game upload ./ja-of-nee --activate --json
 
 - Een dev key (`med_` gevolgd door 64 tekens) is een geheim: wie hem heeft, kan namens jou games uploaden, wijzigen en verwijderen. Zet hem niet in een repository en deel hem niet in een chat. `--token` komt in je shellgeschiedenis; plakken via `me auth` of stdin voorkomt dat.
 - De CLI toont sleutels nooit volledig, alleen als `med_…abcd`. De enige uitzondering is `me admin token create`, dat de nieuwe sleutel één keer toont.
-- Geüploade games draaien op hetzelfde domein als de engine, met hetzelfde vertrouwen als de ingebouwde games. Geef dev keys daarom alleen aan ontwikkelaars die je zelf uitnodigt en vertrouwt. Een game afschermen van onbekende makers (eigen domein per game) staat nog op de planning.
+- Geüploade games draaien op hetzelfde domein als Mini Engine, met hetzelfde vertrouwen als de ingebouwde games. Daarom krijgen alleen uitgenodigde ontwikkelaars een dev key.
 - Lekt een sleutel, trek hem dan in met `me admin token revoke <id>`. `me auth logout` haalt hem alleen van je eigen computer.
 - Het admintoken geeft volledige controle over alle dev keys en games. Gebruik `me admin login` alleen op je eigen machine.
 
@@ -250,10 +253,10 @@ npm run sync-vendor      # haalt sjablonen en skills opnieuw uit ../mini-engine-
 
 `vendor/` bevat een kopie van het gamesjabloon (`bin/templates.mjs` en `types/mini-engine.d.ts`) en de skills uit de Mini Engine SDK. Pas die bestanden niet met de hand aan: `scripts/sync-vendor.mjs` kopieert ze uit een SDK-checkout (`--sdk PAD` of `MINI_ENGINE_SDK`) en legt hashes en SDK-versie vast in `vendor/VENDOR.json`. `npm test` faalt als `vendor/` daarvan afwijkt.
 
-De tests draaien tegen een nagebouwde server. Tegen een echte engine:
+De tests draaien tegen een nagebouwde server. Tegen een echte testserver, met het admintoken daarvan:
 
 ```sh
-MINIENGINE_E2E_SERVER=http://127.0.0.1:3200 \
+MINIENGINE_E2E_SERVER=https://test.example.nl \
 MINIENGINE_E2E_ADMIN_TOKEN=… \
 npm run e2e
 ```
