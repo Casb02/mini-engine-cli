@@ -29,6 +29,7 @@ try {
     document.title = `${code} · ${roles[role]}`;
     const frame = document.createElement('iframe');
     frame.allowFullscreen = true;
+    frame.allow = 'fullscreen; autoplay; clipboard-write; screen-wake-lock';
     frame.title = `${info.game_id} · ${roles[role]}`;
     frame.src = `/api/v1/games/${encodeURIComponent(info.game_id)}/${role}?room=${code}`;
     root.className = 'frame';

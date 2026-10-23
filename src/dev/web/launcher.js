@@ -51,7 +51,7 @@ function load(entry) {
   let frame = entry.screen.querySelector('iframe');
   if (!frame) {
     frame = document.createElement('iframe');
-    frame.allow = 'fullscreen; autoplay; clipboard-write';
+    frame.allow = 'fullscreen; autoplay; clipboard-write; screen-wake-lock';
     entry.screen.replaceChildren(frame);
   }
   frame.title = seat.label;
