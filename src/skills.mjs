@@ -46,6 +46,23 @@ async function sameTree(a, b) {
   return true;
 }
 
+/** Per skill: 'missing', 'current' or 'different'. */
+export async function skillStatus(target) {
+  const out = [];
+  for (const { name } of await listSkills()) {
+    const destination = join(target, name);
+    let status = 'missing';
+    try {
+      const stats = await lstat(destination);
+      status = stats.isDirectory() && !stats.isSymbolicLink() && (await sameTree(join(source, name), destination)) ? 'current' : 'different';
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    out.push({ name, path: destination, status });
+  }
+  return out;
+}
+
 export async function installSkills(target, names, { force = false } = {}) {
   const available = await listSkills();
   const wanted = names.length ? names : available.map(skill => skill.name);

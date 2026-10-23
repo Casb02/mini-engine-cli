@@ -228,7 +228,7 @@ export async function packGame(dir) {
   const files = await collectFiles(dir);
   const paths = files.map(file => file.path);
   if (!paths.includes('manifest.json')) {
-    throw new CliError(`Geen manifest.json gevonden in ${dir}.`, { hint: 'Maak een game met: me game new <slug>' });
+    throw new CliError(`Geen manifest.json gevonden in ${dir}.`, { hint: 'Maak een spel met: me init' });
   }
   const totalBytes = checkLimits(files);
   const encoded = {};

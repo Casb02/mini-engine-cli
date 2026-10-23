@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { gameFiles } from '../vendor/sdk/bin/templates.mjs';
 import { ApiClient, MiniEngine } from '../vendor/sdk/dist/mini-engine.js';
+import { lanAddresses } from '../src/dev/server.mjs';
 import { BIN, runMe, tempHome } from './helpers/run.mjs';
 
 const PARITY_URL = process.env.ME_DEV_PARITY_URL;
@@ -539,7 +540,7 @@ describe('me dev', () => {
     const help = await runMe(['--help'], { home });
     assert.match(help.stdout, /Lokaal testen\n {2}dev \[map\] +Game lokaal testen met een nagebootste engine/);
     const own = await runMe(['dev', '--help'], { home });
-    assert.match(own.stdout, /Gebruik: me dev \[map\] \[--port 3170\] \[--players 2\] \[--set bestand\.json\] \[--no-open\]/);
+    assert.match(own.stdout, /Gebruik: me dev \[map\] \[--port 3170\] \[--players 2\] \[--set bestand\.json\] \[--lan\] \[--no-open\]/);
     const bad = await runMe(['dev', '--port', 'hoog'], { home });
     assert.equal(bad.code, 2);
     assert.match(bad.stderr, /--port moet een geheel getal van 0 tot 65535 zijn/);
@@ -758,5 +759,71 @@ describe('me dev', () => {
     assert.deepEqual(info.seats.map(seat => seat.role), ['host', 'display', 'player', 'player']);
     assert.equal(await run.stop(), 0);
     assert.doesNotThrow(() => JSON.parse(run.stdout));
+  });
+});
+
+describe('me dev --lan lets phones on the same network join', { skip: PARITY_URL ? 'parity runs use a fixed server' : false }, () => {
+  let home;
+  let cleanup;
+  const running = [];
+  const lanHost = lanAddresses()[0];
+  before(async () => ({ home, cleanup } = await tempHome()));
+  after(async () => {
+    for (const run of running) await run.stop();
+    await cleanup();
+  });
+  const launch = async args => {
+    const run = startDev(args, { home });
+    running.push(run);
+    return run.ready();
+  };
+  /** A request to 127.0.0.1 that says it is for another host, the way a phone on the network would address it. */
+  const asHost = (url, host, { method = 'GET', body } = {}) =>
+    new Promise((resolve, reject) => {
+      const target = new URL(url);
+      const req = httpRequest({ hostname: '127.0.0.1', port: target.port, path: target.pathname, method, headers: { host: `${host}:${target.port}`, ...(body ? { 'content-type': 'application/json', origin: `http://${host}:${target.port}` } : {}) } }, res => {
+        let text = '';
+        res.on('data', chunk => (text += chunk));
+        res.on('end', () => resolve({ status: res.statusCode, text, json: () => JSON.parse(text) }));
+      });
+      req.on('error', reject);
+      req.end(body ? JSON.stringify(body) : undefined);
+    });
+
+  test('without --lan only this computer is answered and there is no join page', async () => {
+    await writeGame(home, 'thuis');
+    const dev = await launch(['thuis', '--port', '0']);
+    assert.doesNotMatch(dev.stdout, /wifi/);
+    assert.equal((await asHost(dev.url, '192.168.1.20')).status, 421);
+    assert.equal((await call(dev.url, '/join')).status, 404);
+    assert.equal((await call(dev.url, '/__me/join', { method: 'POST', body: {} })).status, 404);
+  });
+
+  test('with --lan a phone opens the join page, picks a name and gets its own seat', async () => {
+    await writeGame(home, 'feest');
+    const dev = await launch(['feest', '--port', '0', '--lan']);
+    const state = await (await fetch(`${dev.url}/__me/state`)).json();
+    if (lanHost) {
+      assert.match(dev.stdout, new RegExp(`Telefoons op hetzelfde wifi: http://${lanHost.replace(/\./g, '\\.')}:\\d+/join\\nIedereen op dit netwerk kan meedoen`));
+      assert.equal(state.join, `http://${lanHost}:${new URL(dev.url).port}/join`);
+      const page = await asHost(dev.url, lanHost);
+      assert.equal(page.status, 200, 'the network address is answered');
+      assert.equal((await asHost(`${dev.url}/join`, lanHost)).status, 200);
+    }
+    assert.equal((await asHost(dev.url, 'evil.example')).status, 421, 'other host names stay refused');
+    const join = await call(dev.url, '/join');
+    assert.equal(join.status, 200);
+    assert.match(join.text, /<script type="module" src="\/__me\/join\.js">/);
+    const seat = (await call(dev.url, '/__me/join', { method: 'POST', body: { name: 'Pim' } })).json;
+    assert.deepEqual([seat.role, seat.label, seat.remote], ['player', 'Pim', true]);
+    const credential = JSON.parse(decodeURIComponent(seat.hash));
+    const client = await connect(`http://127.0.0.1:${seat.port}`, credential).waitForSnapshot();
+    assert.ok(client.players.some(player => player.name === 'Pim'));
+    const after = await (await fetch(`${dev.url}/__me/state`)).json();
+    assert.equal(after.seats.find(entry => entry.label === 'Pim').remote, true);
+    const taken = await call(dev.url, '/__me/join', { method: 'POST', body: { name: 'pim' } });
+    assert.equal(taken.json.error.code, 'name_taken');
+    const fresh = await (await fetch(`${dev.url}/__me/room`, { method: 'POST' })).json();
+    assert.ok(!fresh.seats.some(entry => entry.label === 'Pim'), 'a new room drops the phones; they join again');
   });
 });

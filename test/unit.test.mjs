@@ -293,7 +293,7 @@ describe('packing', () => {
     assert.deepEqual(pack.manifest.host_modes, ['playing', 'tv']);
     assert.deepEqual(
       pack.files.map(file => file.path),
-      ['README.md', 'assets/app.js', 'assets/style.css', 'display.html', 'host.html', 'manifest.json', 'player.html'],
+      ['README.md', 'assets/app.js', 'assets/icon.svg', 'assets/logic.js', 'assets/room.js', 'assets/style.css', 'assets/texts.js', 'display.html', 'host.html', 'manifest.json', 'player.html'],
     );
     assert.equal(Buffer.from(pack.encoded['host.html'], 'base64').toString().includes('"/games/ja-of-nee/assets/app.js"'), true);
     await assert.rejects(scaffoldGame('ja-of-nee', directory), /Map bestaat al/);

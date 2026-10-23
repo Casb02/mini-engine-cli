@@ -69,13 +69,19 @@ async function uploaded(versions, slug = 'kwis') {
 }
 
 describe('help and usage', () => {
-  test('top-level help lists every command group', async () => {
+  test('top-level help lists the commands for game makers and leaves admin out', async () => {
     const result = await runMe(['--help'], { home });
     assert.equal(result.code, 0);
-    for (const text of ['setup', 'auth status', 'game upload [map]', 'game prune <id>', 'skill install', 'admin token create', 'admin game block <id>']) {
+    assert.match(result.stdout, /Begin hier\n {2}init \[map\] +.*\n {2}setup +.*\n {2}doctor \[map\]/);
+    for (const text of ['auth status', 'game upload [map]', 'game prune <id>', 'skill install']) {
       assert.match(result.stdout, new RegExp(text.replace(/[[\]]/g, '\\$&')));
     }
+    assert.doesNotMatch(result.stdout, /admin|Beheer|MINIENGINE_ADMIN_TOKEN/);
     assert.deepEqual(await runMe([], { home }).then(r => r.stdout), result.stdout);
+    const admin = await runMe(['admin', '--help'], { home });
+    assert.equal(admin.code, 0);
+    for (const text of ['admin login', 'admin token create', 'admin game block <id>', 'admin account verify']) assert.match(admin.stdout, new RegExp(text));
+    assert.match((await runMe(['admin', 'token', 'create', '--help'], { home })).stdout, /--expires DAGEN/);
   });
 
   test('group and command help', async () => {
@@ -220,7 +226,7 @@ describe('game', () => {
     const request = fake.state.requests.find(r => r.method === 'POST');
     assert.equal(request.path, '/api/v1/dev/games/kwis/versions');
     assert.equal(request.body.activate, undefined);
-    assert.deepEqual(Object.keys(request.body.files).sort(), ['README.md', 'assets/app.js', 'assets/style.css', 'display.html', 'host.html', 'manifest.json', 'player.html']);
+    assert.deepEqual(Object.keys(request.body.files).sort(), ['README.md', 'assets/app.js', 'assets/icon.svg', 'assets/logic.js', 'assets/room.js', 'assets/style.css', 'assets/texts.js', 'display.html', 'host.html', 'manifest.json', 'player.html']);
     assert.equal(Buffer.from(request.body.files['manifest.json'], 'base64').toString(), await readFile(join(dir, 'manifest.json'), 'utf8'));
   });
 
@@ -303,7 +309,7 @@ describe('game', () => {
     const result = await authed(['game', 'upload', 'kwis']);
     assert.equal(result.code, 0, result.stderr);
     assert.equal(result.stderr, '');
-    assert.match(result.stdout, /Actief {5}ja\n\nACHIEVEMENT\s+TITEL\neerste-buzz\s+Eerste buzz\nfoutloos\s+Foutloos\n\nSOORT SET\s+TITEL\nbord\s+Eigen bord\n\nSpelen: http:\/\/127\.0\.0\.1:\d+\/home\/new\/kwis$/m);
+    assert.match(result.stdout, /Actief {5}ja\n\nACHIEVEMENT\s+TITEL\neerste-buzz\s+Eerste buzz\nfoutloos\s+Foutloos\n\nSOORT SET\s+TITEL\nbord\s+Eigen bord\n\nDit is de eerste versie van kwis, dus die staat meteen live: iedereen op http:\/\/127\.0\.0\.1:\d+ kan hem spelen\.\nVolgende versies gaan pas live met me game upload --activate\.\n\nSpelen: http:\/\/127\.0\.0\.1:\d+\/home\/new\/kwis$/m);
     const sent = JSON.parse(Buffer.from(fake.state.requests.find(r => r.method === 'POST').body.files['manifest.json'], 'base64').toString());
     assert.deepEqual(sent.set_kinds, SET_KINDS);
     await bump(dir, '0.2.0');
@@ -312,6 +318,12 @@ describe('game', () => {
     assert.deepEqual(data.achievements.map(item => item.id), ['eerste-buzz', 'foutloos']);
     assert.deepEqual(data.set_kinds.map(item => item.id), ['bord']);
     assert.deepEqual(data.warnings, []);
+    assert.equal(data.first_upload, false);
+    assert.equal(data.release.active, false);
+    await bump(dir, '0.3.0');
+    const later = await authed(['game', 'upload', 'kwis', '--activate']);
+    assert.doesNotMatch(later.stdout, /eerste versie/);
+    assert.match(later.stdout, /Spelen: http:\/\/127\.0\.0\.1:\d+\/home\/new\/kwis$/m);
   });
 
   test('upload warns before uploading achievements or set kinds to a server older than 0.5', async () => {
@@ -448,7 +460,7 @@ describe('game', () => {
 });
 
 describe('skill', () => {
-  const vendoredSkills = async () => (await readdir(new URL('../vendor/skills/', import.meta.url), { withFileTypes: true })).filter(entry => entry.isDirectory());
+  const vendoredSkills = async () => (await readdir(new URL('../vendor/sdk/skills/', import.meta.url), { withFileTypes: true })).filter(entry => entry.isDirectory());
 
   test('list shows the vendored skills', async () => {
     const result = await runMe(['skill', 'list', '--json'], { home });
@@ -464,7 +476,7 @@ describe('skill', () => {
     assert.ok((await readFile(join(skill, 'SKILL.md'), 'utf8')).includes('name: build-mini-engine-game'));
     assert.ok((await stat(join(skill, 'scripts', 'play.mjs'))).isFile());
     const font = join('mini-engine-ui', 'kit', 'ui', 'fonts', 'dm-sans.woff2');
-    assert.ok((await readFile(join(home, '.claude', 'skills', font))).equals(await readFile(new URL(`../vendor/skills/${font}`, import.meta.url))));
+    assert.ok((await readFile(join(home, '.claude', 'skills', font))).equals(await readFile(new URL(`../vendor/sdk/skills/${font}`, import.meta.url))));
     const project = join(home, 'project');
     await mkdir(project);
     await runMe(['skill', 'install', 'design-mini-engine-game-ui', '--project'], { home, cwd: project });
@@ -520,7 +532,7 @@ describe('setup', () => {
     const { home: other, cleanup: done } = await tempHome();
     const skipped = await runMe(['setup'], { home: other, input: `${fake.url}\n\nn\nn\n` });
     assert.equal(skipped.code, 0, skipped.stderr);
-    assert.match(skipped.stdout, /me auth\n {2}me game new mijn-game/);
+    assert.match(skipped.stdout, /Volgende stappen:\n {2}me auth\n {2}me init mijn-game/);
     await done();
   });
 

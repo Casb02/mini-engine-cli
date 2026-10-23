@@ -11,12 +11,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const vendor = join(root, 'vendor');
 const record = join(vendor, 'VENDOR.json');
 
-// templates.mjs reads ../types/mini-engine.d.ts, so bin/ and types/ keep their SDK layout.
+// The templates read ../types/ and ../skills/ (the MiniEngineUI kit), so vendor/sdk/ keeps the SDK's layout.
 const COPIES = [
-  ['bin/templates.mjs', 'sdk/bin/templates.mjs'],
+  ['bin', 'sdk/bin'],
   ['types/mini-engine.d.ts', 'sdk/types/mini-engine.d.ts'],
   ['dist/mini-engine.js', 'sdk/dist/mini-engine.js'],
-  ['skills', 'skills'],
+  ['skills', 'sdk/skills'],
 ];
 
 async function walk(dir, base = dir) {

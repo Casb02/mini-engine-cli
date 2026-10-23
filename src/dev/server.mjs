@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { unwatchFile, watch, watchFile } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { basename, relative, sep } from 'node:path';
 import { CliError } from '../errors.mjs';
 import { DevEngine } from './engine.mjs';
@@ -137,6 +138,7 @@ class DevSession {
       }
     }
     if (this.project.metadata.has_display && !this.display) this.display = { port: await this.allocate(), credential: null };
+    this.players = this.players.filter(seat => !seat.remote);
     const room = this.project.roomSet;
     const credential = this.engine.createRoom({ game_id: this.project.metadata.id, set_id: room?.id ?? null });
     this.code = credential.code;
@@ -169,6 +171,16 @@ class DevSession {
     return this.state();
   }
 
+  async addPhone(wanted) {
+    const name = String(wanted ?? '').trim() || this.nextName();
+    const credential = this.engine.join(this.code, name);
+    const port = await this.allocate();
+    this.players.push({ name, port, credential, error: null, remote: true });
+    this.log(`${name} doet mee op een ander apparaat (poort ${port}).`);
+    this.notify();
+    return this.seat(`player-${this.players.length}`, 'player', name, port, credential, false, null, true);
+  }
+
   observe(type, code, extra) {
     if (type === 'award') this.log(`${extra.player} kreeg ${extra.title}`);
     if (code !== this.code) return;
@@ -178,12 +190,13 @@ class DevSession {
     this.notify();
   }
 
-  seat(id, role, label, port, credential, connected, error = null) {
+  seat(id, role, label, port, credential, connected, error = null, remote = false) {
     return {
       id,
       role,
       label,
       port,
+      remote,
       path: credential ? `/room/${credential.code}/${role}` : null,
       hash: credential ? encodeURIComponent(JSON.stringify(credential)) : null,
       connected,
@@ -204,7 +217,7 @@ class DevSession {
       const id = credential?.player_id;
       const left = credential && presence && !(id in presence.players);
       seats.push(
-        this.seat(`player-${index + 1}`, 'player', player.name, player.port, left ? null : credential, Boolean(id && presence?.players[id]), left ? 'Deze speler zit niet meer in de kamer.' : player.error),
+        this.seat(`player-${index + 1}`, 'player', player.name, player.port, left ? null : credential, Boolean(id && presence?.players[id]), left ? 'Deze speler zit niet meer in de kamer.' : player.error, Boolean(player.remote)),
       );
     });
     return {
@@ -213,30 +226,42 @@ class DevSession {
       generation: this.project.generation,
       set: this.project.roomSet,
       room: presence ? { code: this.code, status: presence.status, version: presence.version } : null,
+      join: this.joinUrl ?? null,
       seats,
     };
   }
 }
 
-function listenOn(server, port) {
+/** This computer's IPv4 addresses on the local network: Wi-Fi and ethernet first, virtual bridges last. */
+export function lanAddresses() {
+  const rank = (name, address) => (/^(en|eth|wl)/.test(name) ? 0 : 2) + (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address) ? 0 : 1);
+  const found = Object.entries(networkInterfaces())
+    .flatMap(([name, entries]) => (entries ?? []).filter(entry => entry.family === 'IPv4' && !entry.internal).map(entry => ({ address: entry.address, rank: rank(name, entry.address) })))
+    .sort((a, b) => a.rank - b.rank);
+  return [...new Set(found.map(entry => entry.address))];
+}
+
+function listenOn(server, port, host) {
   return new Promise((resolve, reject) => {
     const failed = error => reject(error);
     server.once('error', failed);
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, host, () => {
       server.off('error', failed);
       resolve(server.address().port);
     });
   });
 }
 
-export async function startDev({ dir, port = 3170, players = 2, setFile = null, log = () => {}, warn = () => {} }) {
+export async function startDev({ dir, port = 3170, players = 2, setFile = null, lan = false, log = () => {}, warn = () => {} }) {
   const project = await DevProject.load(dir, setFile);
   const servers = [];
   let launcherPort = null;
   let session = null;
   let pending = null;
+  const lanHosts = lan ? lanAddresses() : [];
+  const bind = lan ? '0.0.0.0' : '127.0.0.1';
   const engine = new DevEngine({ game: project, observe: (type, code, extra) => session?.observe(type, code, extra) });
-  const app = createApp({ engine, project, session: () => session, launcherPort: () => launcherPort });
+  const app = createApp({ engine, project, session: () => session, launcherPort: () => launcherPort, lanHosts, phones: lan });
   const notify = () => {
     if (pending) return;
     pending = setTimeout(() => {
@@ -248,7 +273,7 @@ export async function startDev({ dir, port = 3170, players = 2, setFile = null, 
   const open = async wanted => {
     const server = createServer(app.request);
     server.on('upgrade', app.upgrade);
-    const bound = await listenOn(server, wanted);
+    const bound = await listenOn(server, wanted, bind);
     servers.push(server);
     return bound;
   };
@@ -275,6 +300,8 @@ export async function startDev({ dir, port = 3170, players = 2, setFile = null, 
   };
 
   session = new DevSession({ engine, project, allocate, log, notify });
+  const lanUrl = lanHosts.length ? `http://${lanHosts[0]}:${launcherPort}/join` : null;
+  session.joinUrl = lanUrl;
   try {
     await session.start(Math.min(players, project.metadata.max_players));
   } catch (error) {
@@ -325,6 +352,7 @@ export async function startDev({ dir, port = 3170, players = 2, setFile = null, 
   const url = `http://127.0.0.1:${launcherPort}`;
   return {
     url,
+    lanUrl,
     project,
     session,
     engine,

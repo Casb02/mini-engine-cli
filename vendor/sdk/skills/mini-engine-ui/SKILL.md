@@ -22,6 +22,8 @@ This skill replaces the "invent your own look" part of design-mini-engine-game-u
 
 ## Apply the kit
 
+For a new game, let the scaffold apply it: `me init` (choose MiniEngineUI), `me game new <slug> --look mini-engine-ui --theme <theme>` or `create-mini-game <slug> --look mini-engine-ui`. That copies `kit/ui/` into `assets/ui/`, uses the kit's markup on every page and wires the room code, "Show QR" and the lobby invite; continue at step 4. The steps below are for a game made with the plain look.
+
 The kit is in this skill's directory, in `kit/`.
 
 1. Scaffold the game as usual (build-mini-engine-game), then copy `kit/ui/` to `<game>/assets/ui/` (stylesheet, two fonts, the QR module `kit/ui/qr.js` with `kit/ui/qr.d.ts`, the invite helpers `kit/ui/invite.js`, and their licenses). The QR module is vendored untyped: the game's `jsconfig.json` needs `"exclude": ["assets/ui/qr.js"]` (scaffolds from SDK 0.5.1 have it), and `qr.d.ts` types it for the check.

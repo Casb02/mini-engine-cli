@@ -232,3 +232,54 @@ h2,
     width: 100%;
   }
 }
+
+.phones {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid light-dark(#d5dad4, rgba(238, 240, 236, 0.14));
+  font-size: 0.95rem;
+}
+.phones p {
+  margin: 0;
+}
+.phones-qr {
+  width: 88px;
+  flex: none;
+  padding: 4px;
+  border-radius: 8px;
+  background: #fff;
+}
+.phones-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  shape-rendering: crispEdges;
+}
+.join {
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 32px 20px;
+  display: grid;
+  gap: 12px;
+}
+.join h1 {
+  margin: 0;
+}
+.join p {
+  margin: 0;
+}
+.join form {
+  display: grid;
+  gap: 8px;
+}
+.join input {
+  min-height: 48px;
+  padding: 0 14px;
+  font: inherit;
+  color: inherit;
+  border: 1px solid light-dark(#d5dad4, rgba(238, 240, 236, 0.14));
+  border-radius: 6px;
+  background: light-dark(#fafbf9, #1c2621);
+}

@@ -10,8 +10,9 @@ import { acceptWebSocket, handshakeProblem } from './websocket.mjs';
 const BODY_LIMIT = 96 * 1024;
 const MAX_SOCKETS = 1024;
 const WEB = new URL('./web/', import.meta.url);
-const FONTS = new URL('../../vendor/skills/mini-engine-ui/kit/ui/fonts/', import.meta.url);
+const FONTS = new URL('../../vendor/sdk/skills/mini-engine-ui/kit/ui/fonts/', import.meta.url);
 const SDK = new URL('../../vendor/sdk/', import.meta.url);
+const QR = new URL('../../vendor/sdk/skills/mini-engine-ui/kit/ui/qr.js', import.meta.url);
 
 const MIME = {
   aac: 'audio/aac', aif: 'audio/aiff', aiff: 'audio/aiff', apng: 'image/apng', avif: 'image/avif', avi: 'video/x-msvideo',
@@ -123,12 +124,13 @@ const json = (status, value) => ({ status, type: 'application/json', body: strin
 const bytes = (body, type) => ({ status: 200, type, body });
 const empty = () => ({ status: 204 });
 
-export function createApp({ engine, project, session, launcherPort }) {
+export function createApp({ engine, project, session, launcherPort, lanHosts = [], phones = false }) {
   const sockets = new Set();
   const streams = new Set();
-  const launcherOrigins = () => [`http://127.0.0.1:${launcherPort()}`, `http://localhost:${launcherPort()}`];
+  const hosts = ['127.0.0.1', 'localhost', ...lanHosts];
+  const launcherOrigins = () => hosts.map(host => `http://${host}:${launcherPort()}`);
   const engineCsp = () => csp(`'self' ${launcherOrigins().join(' ')}`);
-  const launcherCsp = () => `${csp("'none'", 'http://127.0.0.1:* http://localhost:*')}; font-src 'self'`;
+  const launcherCsp = () => `${csp("'none'", hosts.map(host => `http://${host}:*`).join(' '))}; font-src 'self'`;
 
   function headers(contentType, policy = engineCsp()) {
     const out = {
@@ -143,8 +145,9 @@ export function createApp({ engine, project, session, launcherPort }) {
 
   function checkOrigin(req) {
     const host = req.headers.host ?? '';
-    if (!/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/i.test(host)) {
-      throw new EngineError(421, 'host_forbidden', 'me dev beantwoordt alleen verzoeken aan 127.0.0.1 of localhost.');
+    const lan = lanHosts.includes(host.replace(/:\d{1,5}$/, ''));
+    if (!lan && !/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/i.test(host)) {
+      throw new EngineError(421, 'host_forbidden', 'me dev beantwoordt alleen verzoeken aan 127.0.0.1 of localhost, en met --lan aan het netwerkadres van deze computer.');
     }
     const origin = req.headers.origin;
     if (origin === undefined) return;
@@ -358,6 +361,21 @@ export function createApp({ engine, project, session, launcherPort }) {
     ['GET', '/__me/events', (_, { req, res }) => ({ stream: () => openStream(req, res) })],
     ['POST', '/__me/room', async () => json(200, await session().newRoom())],
     ['POST', '/__me/players', async () => json(200, await session().addPlayer())],
+    ...(phones
+      ? [
+          ['GET', '/join', () => ({ ...bytes(web('join.html'), 'text/html; charset=utf-8'), policy: launcherCsp() })],
+          ['GET', '/__me/join.js', () => bytes(web('join.js'), 'text/javascript')],
+          ['GET', '/__me/qr.js', () => bytes(readFileSync(QR), 'text/javascript')],
+          [
+            'POST',
+            '/__me/join',
+            async (_, { req }) => {
+              const input = await readBody(req, { name: 'string?' });
+              return json(200, await session().addPhone(input.name));
+            },
+          ],
+        ]
+      : []),
   ].map(([method, pattern, handler]) => ({ method, ...compile(pattern), handler }));
 
   function openStream(req, res) {
