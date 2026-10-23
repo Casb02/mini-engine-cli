@@ -4,6 +4,7 @@ import { CliError, usageError } from '../errors.mjs';
 import { formatBytes, formatDate, gameStatus, table } from '../format.mjs';
 import { declared, packGame } from '../pack.mjs';
 import { newestFirst, selectPrune } from '../prune.mjs';
+import { gameOptionFlags, gameOptionsFromFlags } from '../options.mjs';
 import { scaffoldGame } from '../scaffold.mjs';
 
 const shortHash = hash => (hash ? String(hash).replace(/^sha256:/, '').slice(0, 12) : '-');
@@ -79,24 +80,36 @@ export const gameCommands = [
             ['ID', 'TITEL', 'ACTIEF', 'STATUS', 'VERSIES'],
             games.map(game => [game.id, game.title, game.active_version ?? '-', gameStatus(game), game.versions?.length ?? 0]),
           )
-        : `Je hebt nog geen games op ${server}.\nMaak er een met: me game new <slug>`;
+        : `Je hebt nog geen games op ${server}.\nMaak er een met: me init`;
       return { data: { server, games }, text };
     },
   },
   {
     path: ['game', 'new'],
-    usage: 'game new <slug> [--dir MAP]',
-    summary: 'Nieuwe game maken vanuit het SDK-sjabloon',
-    description:
-      'Maakt een werkende stemgame (runtime host; iedereen doet standaard mee, TV kan ook) in ./<slug>. De slug wordt het id van de game.\nDe map bevat ook jsconfig.json en types/ voor je editor; .meignore houdt die buiten de upload.',
-    options: { dir: { type: 'string' } },
-    optionHelp: [['--dir MAP', 'Doelmap (standaard ./<slug>); moet nog niet bestaan']],
+    usage: 'game new <slug> [--dir MAP] [--template NAAM]',
+    summary: 'Nieuwe game maken vanuit een SDK-sjabloon',
+    description: [
+      'Maakt een werkende game (runtime host; iedereen doet standaard mee, TV kan ook) in ./<slug>. De slug wordt het id van de game.',
+      'Zonder opties is het de stemgame, in het Engels en eenvoudig opgemaakt. Met vragen en een keuze per stap: me init.',
+      'De map bevat ook jsconfig.json en types/ voor je editor; .meignore houdt die buiten de upload.',
+    ].join('\n'),
+    options: { dir: { type: 'string' }, ...gameOptionFlags },
+    optionHelp: [
+      ['--dir MAP', 'Doelmap (standaard ./<slug>); moet nog niet bestaan'],
+      ['--template NAAM', 'stemmen (standaard), quiz, buzzer, beurten of leeg'],
+      ['--title TITEL', 'Naam van het spel (standaard gemaakt van de slug)'],
+      ['--players MIN-MAX', 'Aantal spelers, bijvoorbeeld 2-8 (standaard per sjabloon)'],
+      ['--modes LIJST', 'playing (Iedereen doet mee), tv of allebei; de eerste is de standaard'],
+      ['--look NAAM', 'plain (standaard) of mini-engine-ui'],
+      ['--theme NAAM', 'kalk, nacht, vilt of studio, bij mini-engine-ui'],
+      ['--lang TAAL', 'Taal van het spel: en (standaard) of nl'],
+    ],
     args: [1, 1],
-    examples: ['me game new ja-of-nee', 'me game new quiz --dir ~/games/quiz'],
+    examples: ['me game new ja-of-nee', 'me game new kwis --template quiz --look mini-engine-ui --lang nl', 'me game new quiz --dir ~/games/quiz'],
     async run(ctx) {
       const [slug] = ctx.args;
       const target = resolve(ctx.cwd, ctx.flags.dir ?? slug);
-      const { directory, files } = await scaffoldGame(slug, target);
+      const { directory, files } = await scaffoldGame(slug, target, await gameOptionsFromFlags(ctx.flags));
       const shown = displayPath(ctx.cwd, directory);
       const { token } = await ctx.settings();
       const next = [`cd ${shown}`, 'me dev', ...(token ? [] : ['me auth']), 'me game upload'];
@@ -166,10 +179,15 @@ export const gameCommands = [
         ...declaredLines(declarations),
         '',
       ];
+      const first = release.active && (game.versions ?? []).length === 1;
+      const play = release.active && !game.blocked && game.enabled ? `${server}${beforeHome ? '/demo' : '/home'}/new/${game.id}` : null;
       if (!release.active) lines.push(`Activeren: me game activate ${game.id} ${release.version}`);
-      else if (game.blocked || !game.enabled) lines.push(statusLine(game));
-      else lines.push(`Spelen: ${server}${beforeHome ? '/demo' : '/home'}/new/${game.id}`);
-      return { data: { game, release, ...declarations, warnings }, text: lines.join('\n') };
+      else if (!play) lines.push(statusLine(game));
+      else {
+        if (first) lines.push(`Dit is de eerste versie van ${game.id}, dus die staat meteen live: iedereen op ${server} kan hem spelen.`, 'Volgende versies gaan pas live met me game upload --activate.', '');
+        lines.push(`Spelen: ${play}`);
+      }
+      return { data: { game, release, ...declarations, warnings, first_upload: first, play_url: play }, text: lines.join('\n') };
     },
   },
   {

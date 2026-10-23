@@ -5,7 +5,7 @@
 
 # Mini Engine CLI
 
-Met de Mini Engine CLI maak, test en publiceer je je eigen partygames voor Mini Engine: een game maken vanuit het SDK-sjabloon, hem op je eigen computer spelen met `me dev`, nieuwe versies uploaden, wisselen tussen versies en de game aan- of uitzetten.
+Met de Mini Engine CLI maak, test en publiceer je je eigen partygames voor Mini Engine: een spel maken met `me init`, het op je eigen computer spelen met `me dev` (ook met telefoons op je wifi), controleren met `me doctor`, nieuwe versies uploaden, wisselen tussen versies en de game aan- of uitzetten.
 
 Documentatie: [docs.miniengine.nl](https://docs.miniengine.nl/publiceren/cli.html). De routes die de CLI gebruikt, staan bij [API: ontwikkelaars](https://docs.miniengine.nl/api/ontwikkelaars.html).
 
@@ -29,19 +29,26 @@ Controleer met `me --version`.
 
 ## Snel aan de slag
 
-Om te publiceren heb je een dev key nodig. Die krijg je van wie de Mini Engine-server beheert waar je naar publiceert. Daarna:
-
 ```sh
-me setup
+mkdir quizavond && cd quizavond
+me init
 ```
 
-`me setup` vraagt de server-URL, je dev key, of de AI-skills voor Claude Code geïnstalleerd moeten worden en of je meteen een eerste game wilt maken. Elke stap kun je overslaan. Liever stap voor stap:
+`me init` stelt een paar vragen, elk met een standaard, dus Enter, Enter, Enter werkt ook:
+
+- de titel, en het id op de server dat daaruit volgt (aan te passen);
+- het startsjabloon: `stemmen`, `quiz`, `buzzer`, `beurten` of `leeg`;
+- het aantal spelers;
+- wie de kamer maakt: *Iedereen doet mee*, *TV* of allebei;
+- het uiterlijk: MiniEngineUI met een thema, of eenvoudig;
+- de taal van het spel: Nederlands of Engels;
+- of de AI-skills voor Claude Code erbij moeten, als ze nog ontbreken.
+
+Daarna zie je wat er klaarstaat en vraagt `me init` of je het meteen wilt proberen. Dan start `me dev` en opent je browser met de spelleider en twee spelers naast elkaar. Je hebt daarvoor geen dev key nodig.
+
+Om te publiceren heb je wel een dev key nodig. Die krijg je van wie de Mini Engine-server beheert waar je naar publiceert. `me setup` loopt de server, je dev key en de skills met je langs; `me doctor` laat zien of alles klaarstaat. Daarna:
 
 ```sh
-me auth --server https://games.example.nl   # dev key plakken
-me game new ja-of-nee                         # maakt ./ja-of-nee
-cd ja-of-nee
-me dev                                        # spelen op je eigen computer, zonder dev key
 me game upload                                # eerste versie, meteen actief en zichtbaar
 ```
 
@@ -49,6 +56,24 @@ Pas daarna de game aan, verhoog `version` in `manifest.json` en upload opnieuw:
 
 ```sh
 me game upload --activate
+```
+
+### Startsjablonen
+
+| Sjabloon | Wat | Laat zien |
+| --- | --- | --- |
+| `stemmen` | Iedereen stemt ja of nee op één vraag; elk scherm toont de stand. | De wachtrij van de host, een host die meespeelt, een gedeeld scherm |
+| `quiz` | Meerkeuzevragen op tijd, punten en een eindstand. | Geheime antwoorden in `host_state`, `data.json`, eigen sets (één vraag per regel), een achievement |
+| `buzzer` | Wie drukt het snelst na het signaal? | `client.realtime` met de `ts` van de server; de host beslist eerlijk |
+| `beurten` | Om de beurt dobbelen; een 1 kost je de punten van die beurt. | Beurten, spelers die weggaan, overslaan na 30 seconden offline |
+| `leeg` | Een kaal begin: lobby, start, één voorbeeldzet en een einde. | Het kleinste rondje van actie naar host naar state |
+
+Elk sjabloon is een werkend spel met `host_modes: ["playing", "tv"]`, spelregels in `assets/logic.js` met tests in `tests/logic.test.mjs`, alle woorden in `assets/texts.js`, een icoon, een README, `jsconfig.json` en `.meignore`.
+
+Zonder vragen, bijvoorbeeld in een script:
+
+```sh
+me init quizavond --yes --template quiz --title "Quiz bij Dani" --players 2-8
 ```
 
 ## Commando's
@@ -68,7 +93,7 @@ Elk commando heeft `--help`, bijvoorbeeld `me game upload --help`.
 | Commando | Doet |
 | --- | --- |
 | `me game list` | Je games met actieve versie, status (aan, uit of geblokkeerd) en aantal versies. |
-| `me game new <slug> [--dir MAP]` | Maakt een werkende stemgame vanuit het SDK-sjabloon in `./<slug>`. |
+| `me game new <slug> [--dir MAP] [--template NAAM]` | Maakt een werkend spel vanuit een SDK-sjabloon in `./<slug>`, zonder vragen. Standaard de stemgame, in het Engels en eenvoudig opgemaakt; `--title`, `--players`, `--modes`, `--look`, `--theme` en `--lang` werken als bij `me init`. |
 | `me game upload [map] [--activate] [--dry-run]` | Pakt de map in en uploadt hem als nieuwe versie. |
 | `me game versions <id>` | Alle versies met grootte, hash en of een lopende room ze gebruikt. |
 | `me game activate <id> <versie>` | Maakt een versie actief. Zo zet je ook een oudere versie terug. |
@@ -85,6 +110,7 @@ Elk commando heeft `--help`, bijvoorbeeld `me game upload --help`.
 | --- | --- |
 | `me dev [map]` | Start een lokale, nagebootste engine voor je game en opent een overzicht met de spelleider, het scherm en de spelers naast elkaar. |
 | `me dev --players 4 --set bord.json` | Met vier spelers, en met `bord.json` als eigen set in plaats van `data.json`. |
+| `me dev --lan` | Ook telefoons op hetzelfde wifi doen mee, via het adres dat `me dev` toont. |
 
 ### AI-skills
 
@@ -95,12 +121,33 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 | `me skill list` | Toont de meegeleverde skills. |
 | `me skill install [naam…] [--project \| --path MAP] [--force]` | Installeert in `~/.claude/skills`, met `--project` in `./.claude/skills`, of in een eigen map. Een bestaande skill met andere inhoud wordt alleen met `--force` overschreven. |
 
-### Eerste keer
+### Begin hier
 
 | Commando | Doet |
 | --- | --- |
+| `me init [map]` | Nieuw spel met een paar vragen, en daarna meteen `me dev`. |
+| `me init [map] --yes --template quiz …` | Hetzelfde zonder vragen; `--json` voor scripts, `--dev` start `me dev` zonder te vragen. |
 | `me setup` | Server, dev key, skills en een eerste game, met vragen. |
 | `me setup --server URL --token KEY --no-skills --game SLUG` | Hetzelfde zonder vragen. `--yes` kiest overal de standaard. |
+| `me doctor [map]` | Controleert Node.js, de CLI, de server, je dev key, de skills en het spel in deze map, met per probleem één oplossing. |
+
+`me init` maakt het spel in de map waarin je staat als die leeg is (verborgen bestanden zoals `.git` tellen niet mee), anders in een nieuwe map met het id als naam. Zonder terminal, of met `--yes` of `--json`, vraagt het niets en gebruikt het je opties en verder de standaard: stemmen, MiniEngineUI, Nederlands, *Iedereen doet mee* en TV, en de ontbrekende AI-skills erbij. Met `--interactive` stelt het de vragen ook zonder terminal, met de antwoorden op stdin.
+
+`me doctor` toont een lijst met ✓ en ✗, en onder elke ✗ wat je kunt doen:
+
+```
+✓ Node.js 22.12.0
+✓ CLI 0.6.0 is de nieuwste versie
+✓ Server https://miniengine.nl (standaard) is bereikbaar, Mini Engine 0.6.1
+✗ Geen dev key voor https://miniengine.nl; uploaden kan nog niet. Spelen met me dev lukt wel.
+    Vraag een dev key aan wie de server beheert en log in met: me auth
+✓ AI-skills staan in ~/.claude/skills
+✓ Spel quizavond 0.1.0 in .: 20 bestanden, 196,4 KiB, klaar om te uploaden
+
+1 ding om op te lossen.
+```
+
+In een map met `manifest.json` doet doctor dezelfde controles als `me game upload --dry-run`, en kijkt hij of de pagina's alleen bestanden uit het spel laden. Ben je ingelogd, dan meldt hij ook of deze versie al op de server staat. Zonder internet slaat hij de controle op een nieuwere CLI over. De exitcode is 1 als er iets op te lossen is.
 
 ## Lokaal testen met me dev
 
@@ -117,6 +164,8 @@ Pas je iets aan in de map, dan laden de stoelen opnieuw en blijft de kamer besta
 
 Het overzicht en elke stoel bedienen dezelfde adressen als de server, zoals `/api/v1/rooms` en `/room/CODE/ROL`. Zo kan een script met Playwright een hele kamer bespelen; de skill `build-mini-engine-game` levert daarvoor `scripts/play.mjs`.
 
+Met `me dev --lan` doen ook telefoons op hetzelfde wifi mee. `me dev` toont dan een adres zoals `http://192.168.1.20:3171/join`, en in het overzicht een QR-code. Een telefoon opent dat adres, kiest een naam en krijgt een eigen stoel; het overzicht toont die stoel zonder scherm. Alleen die aanmeldpagina en de stoelen van de telefoons staan op het netwerk, en een telefoon kan daar alleen wat een speler nodig heeft. Het overzicht, **Nieuwe kamer**, **Speler toevoegen** en de andere stoelen blijven op je eigen computer (`127.0.0.1`). Er doen hoogstens 8 telefoons tegelijk mee; bij **Nieuwe kamer** gaan hun stoelen dicht en doen ze opnieuw mee via hetzelfde adres. Iedereen op het netwerk kan de aanmeldpagina openen, dus gebruik `--lan` alleen op een netwerk dat je vertrouwt.
+
 `me dev` is een nabootsing. Hij volgt het protocol van de engine en de tests van de CLI draaien hem met dezelfde stappen als de echte engine, maar test je game voor een avond met vrienden ook een keer op een echte server, bijvoorbeeld met `me game upload` en een testversie.
 
 ## Uploaden
@@ -130,7 +179,7 @@ Niet meegestuurd worden:
 - de map `tests/` in de hoofdmap van de game
 - patronen uit `.meignore`
 
-`.meignore` heeft één patroon per regel. `*` past binnen één map, `**` over mappen heen, een `/` aan het eind betekent alleen mappen, en een patroon met een `/` erin geldt vanaf de hoofdmap. Regels die met `#` beginnen zijn commentaar. `me game new` zet `jsconfig.json` en `types/` er alvast in, omdat die alleen voor je editor zijn.
+`.meignore` heeft één patroon per regel. `*` past binnen één map, `**` over mappen heen, een `/` aan het eind betekent alleen mappen, en een patroon met een `/` erin geldt vanaf de hoofdmap. Regels die met `#` beginnen zijn commentaar. `me init` en `me game new` zetten `jsconfig.json` en `types/` er alvast in, omdat die alleen voor je editor zijn.
 
 ```
 *.psd
@@ -140,7 +189,7 @@ assets/**/*.wav
 
 Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` gebruikt, dat `host_modes` een of meer van `"playing"`, `"tv"` en `"moderator"` bevat (`"hostless"` is alleen voor ingebouwde games) met `default_host_mode` daarin, dat een eventueel `icon` klopt (zie hieronder) en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
 
-De eerste versie van een nieuwe game wordt meteen actief: hij staat dan voor iedereen op de startpagina van die server. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
+De eerste versie van een nieuwe game wordt meteen actief: hij staat dan voor iedereen op de startpagina van die server. `me game upload` zegt dat er na de eerste upload bij, met het adres om een kamer te maken. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
 
 Na een geslaagde upload van een actieve versie toont de CLI waar je de game start: `<server>/home/new/<id>`. Bij een server ouder dan 0.5 is dat nog `/demo/new/<id>`.
 
@@ -151,7 +200,7 @@ Een gezelschapsspel (bord, kaart, dobbel, tekenen) zet `host_modes: ["playing", 
 - **Iedereen doet mee** (`playing`, sinds Mini Engine 0.5.1): de maker heeft met dezelfde sleutel ook een stoel, met `player_id` in de credential en `host_player_id` in elke snapshot. Die stoel telt mee voor `max_players`, staat altijd klaar en houdt de start nooit tegen. De hostpagina ziet eruit als een telefoon van een speler, met alleen wat het spel van de maker nodig heeft (Start, Nieuw spel). Hij blijft scheidsrechter: hij stuurt geen acties, maar past zijn eigen zet direct toe met `setState`. Op zijn eigen stoel kan hij ook achievements krijgen.
 - **TV** (`tv`, sinds 0.5.2): het apparaat dat de kamer maakt, is de tv. Het toont het spel, heeft geen stoel (`player_id` en `host_player_id` zijn `null`) en speelt niet mee; iedereen speelt op de telefoon. De eigenaar van de tv kan op de eigen telefoon achievements krijgen.
 
-`moderator` (*Ik, als spelleider*) is voor een spel met een leider die niet meespeelt, zoals een quizmaster. Een nieuwe game van `me game new` biedt `["playing", "tv"]`; zonder `host_modes` blijft het `["moderator"]`.
+`moderator` (*Ik, als spelleider*) is voor een spel met een leider die niet meespeelt, zoals een quizmaster. Een nieuw spel van `me init` of `me game new` biedt `["playing", "tv"]`; zonder `host_modes` blijft het `["moderator"]`.
 
 ### Icoon
 
@@ -229,6 +278,6 @@ npm test                 # controleert vendor/ en draait de tests (node --test)
 npm run sync-vendor      # haalt sjablonen en skills opnieuw uit ../mini-engine-sdk
 ```
 
-`vendor/` bevat een kopie van het gamesjabloon (`bin/templates.mjs` en `types/mini-engine.d.ts`) en de skills uit de Mini Engine SDK. Pas die bestanden niet met de hand aan: `scripts/sync-vendor.mjs` kopieert ze uit een SDK-checkout (`--sdk PAD` of `MINI_ENGINE_SDK`) en legt hashes en SDK-versie vast in `vendor/VENDOR.json`. `npm test` faalt als `vendor/` daarvan afwijkt.
+`vendor/sdk/` bevat een kopie van de sjablonen (`bin/`), de SDK (`dist/` en `types/`) en de skills (`skills/`) uit de Mini Engine SDK, in dezelfde indeling als de SDK zelf. Pas die bestanden niet met de hand aan: `scripts/sync-vendor.mjs` kopieert ze uit een SDK-checkout (`--sdk PAD` of `MINI_ENGINE_SDK`) en legt hashes en SDK-versie vast in `vendor/VENDOR.json`. `npm test` faalt als `vendor/` daarvan afwijkt.
 
 De tests draaien tegen een nagebouwde server. `npm run e2e` draait de CLI tegen een echte testserver: uploaden, versies, rooms, aan en uit, opruimen en verwijderen. Het script zegt zelf welke gegevens van die server het nodig heeft. Gebruik het alleen tegen een testserver.

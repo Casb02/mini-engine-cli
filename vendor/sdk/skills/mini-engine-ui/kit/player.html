@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>__TITLE__</title>
+  <link rel="stylesheet" href="/games/__SLUG__/assets/ui/mini-engine-ui.css">
+  <link rel="stylesheet" href="/games/__SLUG__/assets/style.css">
+</head>
+<body data-role="player" data-theme="kalk">
+  <div class="me-page">
+    <header class="me-bar">
+      <span class="me-bar-name">__TITLE__</span>
+      <div class="me-bar-end"><button type="button" class="me-code" id="code"></button><button type="button" class="me-bar-button" id="show-qr">Show QR</button></div>
+    </header>
+    <div class="me-notices">
+      <p id="error" class="me-notice is-error" role="alert"></p>
+      <p id="away" class="me-notice" role="status"></p>
+      <p id="achievement" class="me-notice me-reveal" role="status"></p>
+    </div>
+    <main class="me-stage">
+      <div class="me-focus">
+        <section id="invite" class="me-invite" hidden>
+          <div id="invite-qr" class="me-qr"></div>
+          <div class="me-invite-text"><span id="invite-label" class="me-label"></span><span id="invite-code" class="me-code"></span></div>
+        </section>
+        <h1 id="prompt" class="me-title"></h1>
+        <p id="status" class="me-status" role="status">Connecting…</p>
+        <section id="tally" class="me-tally" aria-label="Votes" hidden>
+          <div class="me-card"><strong id="yes" class="me-big">0</strong><span class="me-label">Yes</span></div>
+          <div class="me-card"><strong id="no" class="me-big">0</strong><span class="me-label">No</span></div>
+        </section>
+        <div id="choices" class="me-choices" data-for="seat" hidden><button type="button" id="vote-yes" class="me-choice" aria-pressed="false">Yes</button><button type="button" id="vote-no" class="me-choice" aria-pressed="false">No</button></div>
+        <p id="rules" class="me-muted"></p>
+        <div class="me-actions" data-for="host" hidden><button type="button" id="finish" class="me-button is-primary" hidden>Close the vote</button></div>
+        <div class="me-actions">
+          <button type="button" id="ready" class="me-button is-primary is-wide" hidden>I’m ready</button>
+          <button type="button" id="start" class="me-button is-primary" hidden>Start the game</button>
+          <button type="button" id="again" class="me-button is-primary" hidden>New game</button>
+        </div>
+        <ul id="players" class="me-roster" aria-label="Players" hidden></ul>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/games/__SLUG__/assets/app.js"></script>
+</body>
+</html>

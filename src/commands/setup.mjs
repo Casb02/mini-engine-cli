@@ -130,12 +130,12 @@ export const setupCommands = [
         result.game = { id: slug, directory: created.directory };
         say(`    Game ${slug} gemaakt in ${shown}.`);
       } else if (!flags['no-game'] && ask) {
-        say('    Overgeslagen. Later: me game new <slug>');
+        say('    Overgeslagen. Later, met een paar vragen: me init');
       }
 
-      if (!result.account) result.next = ['me auth', `me game new ${slug ?? 'mijn-game'}`, `me dev ${shown ?? 'mijn-game'}`, `me game upload ${shown ?? 'mijn-game'}`];
+      if (!result.account) result.next = shown ? ['me auth', `cd ${shown}`, 'me dev', 'me game upload'] : ['me auth', 'me init mijn-game'];
       else if (shown) result.next = [`cd ${shown}`, 'me dev', 'me game upload', 'me game list'];
-      else result.next = ['me game new mijn-game', 'cd mijn-game', 'me dev', 'me game upload'];
+      else result.next = ['me init mijn-game'];
       return { data: result, text: ['', 'Klaar. Volgende stappen:', ...result.next.map(line => `  ${line}`)].join('\n') };
     },
   },

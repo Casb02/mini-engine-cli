@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Meedoen · me dev</title>
+    <link rel="icon" type="image/svg+xml" href="/__me/favicon.svg" />
+    <link rel="stylesheet" href="/__me/launcher.css" />
+  </head>
+  <body>
+    <main class="join">
+      <h1 id="title">Meedoen</h1>
+      <p>Kies een naam, of laat het veld leeg.</p>
+      <form id="form">
+        <label for="name">Naam</label>
+        <input id="name" name="name" maxlength="32" autocomplete="nickname" />
+        <button class="button" type="submit">Doe mee</button>
+      </form>
+      <p id="notice" class="notice" role="status" hidden></p>
+    </main>
+    <script type="module" src="/__me/join.js"></script>
+  </body>
+</html>

@@ -8,7 +8,9 @@ import { PACKAGE, vendorInfo } from './vendor.mjs';
 import { adminCommands, adminGroups } from './commands/admin.mjs';
 import { authCommands, authGroups } from './commands/auth.mjs';
 import { devCommands } from './commands/dev.mjs';
+import { doctorCommands } from './commands/doctor.mjs';
 import { gameCommands, gameGroups } from './commands/game.mjs';
+import { initCommands } from './commands/init.mjs';
 import { setupCommands } from './commands/setup.mjs';
 import { skillCommands, skillGroups } from './commands/skill.mjs';
 
@@ -25,16 +27,16 @@ const GLOBAL_HELP = [
   ['-h, --help', 'Help bij een commando'],
 ];
 
-export const COMMANDS = [...setupCommands, ...authCommands, ...gameCommands, ...devCommands, ...skillCommands, ...adminCommands];
+export const COMMANDS = [...initCommands, ...setupCommands, ...doctorCommands, ...authCommands, ...gameCommands, ...devCommands, ...skillCommands, ...adminCommands];
 const GROUPS = [...authGroups, ...gameGroups, ...skillGroups, ...adminGroups];
 
+// me admin is for the owner of a server; it works and has its own help, but stays out of this overview.
 const SECTIONS = [
-  ['Begin hier', ['setup']],
+  ['Begin hier', ['init', 'setup', 'doctor']],
   ['Inloggen', ['auth']],
   ['Games', ['game']],
   ['Lokaal testen', ['dev']],
   ['AI-skills', ['skill']],
-  ['Beheer (alleen de eigenaar van de server)', ['admin']],
 ];
 
 const ALL_OPTIONS = Object.assign({}, GLOBAL_OPTIONS, ...COMMANDS.map(command => command.options ?? {}));
@@ -52,14 +54,15 @@ function commandLines(commands, width = Math.max(...commands.map(command => brie
 }
 
 function topHelp() {
-  const lines = [`Mini Engine CLI ${PACKAGE.version}`, '', 'Upload en beheer je eigen games op een Mini Engine-server.', '', 'Gebruik: me <commando> [opties]'];
-  const width = Math.max(...COMMANDS.map(command => brief(command).length));
+  const lines = [`Mini Engine CLI ${PACKAGE.version}`, '', 'Maak, test en publiceer je eigen games voor Mini Engine.', '', 'Gebruik: me <commando> [opties]'];
+  const listed = COMMANDS.filter(command => SECTIONS.some(([, roots]) => roots.includes(command.path[0])));
+  const width = Math.max(...listed.map(command => brief(command).length));
   for (const [title, roots] of SECTIONS) {
     const commands = COMMANDS.filter(command => roots.includes(command.path[0]));
     lines.push('', title, ...commandLines(commands, width));
   }
   lines.push('', 'Algemene opties', ...optionLines([...GLOBAL_HELP, ['-v, --version', 'Versie tonen']]));
-  lines.push('', 'Meer uitleg per commando: me <commando> --help', 'Instellingen: ~/.config/miniengine/config.json, of MINIENGINE_SERVER, MINIENGINE_TOKEN en MINIENGINE_ADMIN_TOKEN.');
+  lines.push('', 'Meer uitleg per commando: me <commando> --help', 'Instellingen: ~/.config/miniengine/config.json, of MINIENGINE_SERVER en MINIENGINE_TOKEN.');
   return lines.join('\n');
 }
 

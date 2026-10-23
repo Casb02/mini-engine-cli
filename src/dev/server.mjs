@@ -2,15 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { unwatchFile, watch, watchFile } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { basename, relative, sep } from 'node:path';
 import { CliError } from '../errors.mjs';
 import { DevEngine } from './engine.mjs';
-import { notFound } from './errors.mjs';
+import { EngineError, notFound } from './errors.mjs';
 import { createApp } from './http.mjs';
 import { loadPackage } from './package.mjs';
 import { validateSetContent } from './schema.mjs';
 
 export const NAMES = ['Dani', 'Sander', 'Kevin', 'Jelmer', 'Hessel', 'Pim'];
+export const MAX_PHONES = 8;
 const RELOAD_DELAY = 120;
 
 export async function loadSet(path, metadata, id) {
@@ -99,10 +101,11 @@ class DevProject {
 }
 
 class DevSession {
-  constructor({ engine, project, allocate, log, notify }) {
+  constructor({ engine, project, allocate, release = async () => {}, log, notify }) {
     this.engine = engine;
     this.project = project;
     this.allocate = allocate;
+    this.release = release;
     this.log = log;
     this.notify = notify;
     this.code = null;
@@ -137,6 +140,8 @@ class DevSession {
       }
     }
     if (this.project.metadata.has_display && !this.display) this.display = { port: await this.allocate(), credential: null };
+    for (const seat of this.players.filter(entry => entry.remote)) await this.release(seat.port);
+    this.players = this.players.filter(seat => !seat.remote);
     const room = this.project.roomSet;
     const credential = this.engine.createRoom({ game_id: this.project.metadata.id, set_id: room?.id ?? null });
     this.code = credential.code;
@@ -169,6 +174,23 @@ class DevSession {
     return this.state();
   }
 
+  joinInfo() {
+    return { title: this.project.metadata.title, open: Boolean(this.code) };
+  }
+
+  async addPhone(wanted) {
+    if (this.players.filter(seat => seat.remote).length >= MAX_PHONES) {
+      throw new EngineError(409, 'phones_full', `Er doen al ${MAX_PHONES} telefoons mee. Kies Nieuwe kamer in het overzicht om opnieuw te beginnen.`);
+    }
+    const name = String(wanted ?? '').trim() || this.nextName();
+    const credential = this.engine.join(this.code, name);
+    const port = await this.allocate({ phone: true });
+    this.players.push({ name, port, credential, error: null, remote: true });
+    this.log(`${name} doet mee op een ander apparaat (poort ${port}).`);
+    this.notify();
+    return this.seat(`player-${this.players.length}`, 'player', name, port, credential, false, null, true);
+  }
+
   observe(type, code, extra) {
     if (type === 'award') this.log(`${extra.player} kreeg ${extra.title}`);
     if (code !== this.code) return;
@@ -178,12 +200,13 @@ class DevSession {
     this.notify();
   }
 
-  seat(id, role, label, port, credential, connected, error = null) {
+  seat(id, role, label, port, credential, connected, error = null, remote = false) {
     return {
       id,
       role,
       label,
       port,
+      remote,
       path: credential ? `/room/${credential.code}/${role}` : null,
       hash: credential ? encodeURIComponent(JSON.stringify(credential)) : null,
       connected,
@@ -204,7 +227,7 @@ class DevSession {
       const id = credential?.player_id;
       const left = credential && presence && !(id in presence.players);
       seats.push(
-        this.seat(`player-${index + 1}`, 'player', player.name, player.port, left ? null : credential, Boolean(id && presence?.players[id]), left ? 'Deze speler zit niet meer in de kamer.' : player.error),
+        this.seat(`player-${index + 1}`, 'player', player.name, player.port, left ? null : credential, Boolean(id && presence?.players[id]), left ? 'Deze speler zit niet meer in de kamer.' : player.error, Boolean(player.remote)),
       );
     });
     return {
@@ -213,30 +236,44 @@ class DevSession {
       generation: this.project.generation,
       set: this.project.roomSet,
       room: presence ? { code: this.code, status: presence.status, version: presence.version } : null,
+      join: this.joinUrl ?? null,
       seats,
     };
   }
 }
 
-function listenOn(server, port) {
+/** This computer's IPv4 addresses on the local network: Wi-Fi and ethernet first, virtual bridges last. */
+export function lanAddresses() {
+  const rank = (name, address) => (/^(en|eth|wl)/.test(name) ? 0 : 2) + (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address) ? 0 : 1);
+  const found = Object.entries(networkInterfaces())
+    .flatMap(([name, entries]) => (entries ?? []).filter(entry => entry.family === 'IPv4' && !entry.internal).map(entry => ({ address: entry.address, rank: rank(name, entry.address) })))
+    .sort((a, b) => a.rank - b.rank);
+  return [...new Set(found.map(entry => entry.address))];
+}
+
+function listenOn(server, port, host) {
   return new Promise((resolve, reject) => {
     const failed = error => reject(error);
     server.once('error', failed);
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, host, () => {
       server.off('error', failed);
       resolve(server.address().port);
     });
   });
 }
 
-export async function startDev({ dir, port = 3170, players = 2, setFile = null, log = () => {}, warn = () => {} }) {
+export async function startDev({ dir, port = 3170, players = 2, setFile = null, lan = false, log = () => {}, warn = () => {} }) {
   const project = await DevProject.load(dir, setFile);
   const servers = [];
   let launcherPort = null;
   let session = null;
   let pending = null;
+  const lanHosts = lan ? lanAddresses() : [];
+  const byPort = new Map();
+  const phonePorts = new Set();
+  let joinPort = null;
   const engine = new DevEngine({ game: project, observe: (type, code, extra) => session?.observe(type, code, extra) });
-  const app = createApp({ engine, project, session: () => session, launcherPort: () => launcherPort });
+  const app = createApp({ engine, project, session: () => session, launcherPort: () => launcherPort, lanHosts, joinPort: () => joinPort, phonePorts: () => phonePorts });
   const notify = () => {
     if (pending) return;
     pending = setTimeout(() => {
@@ -245,11 +282,13 @@ export async function startDev({ dir, port = 3170, players = 2, setFile = null, 
     }, 30);
   };
 
-  const open = async wanted => {
+  // The overview and the seats on this computer listen on 127.0.0.1 only; with --lan the join page and the phones' seats also on the network.
+  const open = async (wanted, network = false) => {
     const server = createServer(app.request);
     server.on('upgrade', app.upgrade);
-    const bound = await listenOn(server, wanted);
+    const bound = await listenOn(server, wanted, network ? '0.0.0.0' : '127.0.0.1');
     servers.push(server);
+    byPort.set(bound, server);
     return bound;
   };
 
@@ -261,20 +300,51 @@ export async function startDev({ dir, port = 3170, players = 2, setFile = null, 
   }
 
   let last = launcherPort;
-  const allocate = async () => {
-    if (port === 0) return open(0);
+  const allocate = async ({ phone = false } = {}) => {
+    const take = bound => {
+      if (phone) phonePorts.add(bound);
+      return bound;
+    };
+    if (port === 0) return take(await open(0, phone));
     for (let candidate = last + 1; candidate <= Math.min(last + 200, 65535); candidate += 1) {
       try {
-        last = await open(candidate);
-        return last;
+        last = await open(candidate, phone);
+        return take(last);
       } catch (error) {
         if (error.code !== 'EADDRINUSE') throw error;
       }
     }
     throw new CliError(`Geen vrije poort gevonden na ${last}.`, { hint: 'Kies een andere poort met --port.' });
   };
+  const release = async freed => {
+    const server = byPort.get(freed);
+    if (!server) return;
+    byPort.delete(freed);
+    phonePorts.delete(freed);
+    servers.splice(servers.indexOf(server), 1);
+    await new Promise(resolve => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+  };
 
-  session = new DevSession({ engine, project, allocate, log, notify });
+  if (lan) {
+    let candidate = launcherPort;
+    for (;;) {
+      candidate = port === 0 ? 0 : candidate + 1;
+      try {
+        joinPort = await open(candidate, true);
+        last = Math.max(last, joinPort);
+        break;
+      } catch (error) {
+        if (error.code !== 'EADDRINUSE' || candidate >= 65535) throw error;
+      }
+    }
+  }
+
+  session = new DevSession({ engine, project, allocate, release, log, notify });
+  const lanUrl = lan && lanHosts.length ? `http://${lanHosts[0]}:${joinPort}/join` : null;
+  session.joinUrl = lanUrl;
   try {
     await session.start(Math.min(players, project.metadata.max_players));
   } catch (error) {
@@ -325,6 +395,10 @@ export async function startDev({ dir, port = 3170, players = 2, setFile = null, 
   const url = `http://127.0.0.1:${launcherPort}`;
   return {
     url,
+    lanUrl,
+    joinPort,
+    phonePorts,
+    openPorts: () => [...byPort.keys()],
     project,
     session,
     engine,

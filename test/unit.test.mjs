@@ -6,6 +6,8 @@ import { configPath, loadConfig, normalizeServer, resolveSettings, saveConfig, u
 import { formatBytes, maskToken, table, terminalSafe } from '../src/format.mjs';
 import { checkManifest, collectFiles, compileIgnore, isIgnored, packGame, parseIgnore } from '../src/pack.mjs';
 import { selectPrune } from '../src/prune.mjs';
+import { Readable } from 'node:stream';
+import { createApp, isLoopback } from '../src/dev/http.mjs';
 import { scaffoldGame } from '../src/scaffold.mjs';
 import { tempHome } from './helpers/run.mjs';
 
@@ -293,7 +295,7 @@ describe('packing', () => {
     assert.deepEqual(pack.manifest.host_modes, ['playing', 'tv']);
     assert.deepEqual(
       pack.files.map(file => file.path),
-      ['README.md', 'assets/app.js', 'assets/style.css', 'display.html', 'host.html', 'manifest.json', 'player.html'],
+      ['README.md', 'assets/app.js', 'assets/icon.svg', 'assets/logic.js', 'assets/room.js', 'assets/style.css', 'assets/texts.js', 'display.html', 'host.html', 'manifest.json', 'player.html'],
     );
     assert.equal(Buffer.from(pack.encoded['host.html'], 'base64').toString().includes('"/games/ja-of-nee/assets/app.js"'), true);
     await assert.rejects(scaffoldGame('ja-of-nee', directory), /Map bestaat al/);
@@ -329,5 +331,109 @@ describe('prune selection', () => {
     const plan = selectPrune(game([release('a', '2026-01-01T00:00:00Z'), release('b', '2026-01-01T00:00:00Z'), release('c', '2025-01-01T00:00:00Z')]), 1);
     assert.deepEqual(plan.keep.map(r => r.version), ['b']);
     assert.deepEqual(plan.delete.map(r => r.version), ['a', 'c']);
+  });
+});
+
+describe('me dev access from the network', () => {
+  const LAUNCHER = 3570;
+  const JOIN = 3571;
+  const PHONE = 3572;
+  const LOCAL_SEAT = 3573;
+  const calls = [];
+  const app = createApp({
+    engine: { info: () => ({ game_id: 'feest', game_version: '0.1.0' }) },
+    project: { metadata: { id: 'feest', version: '0.1.0' }, html: () => '<p>speler</p>', asset: () => undefined },
+    session: () => ({
+      state: () => ({ seats: [{ hash: 'geheim' }] }),
+      joinInfo: () => ({ title: 'Feest', open: true }),
+      newRoom: async () => calls.push('room'),
+      addPlayer: async () => calls.push('player'),
+      addPhone: async name => ({ label: name, remote: true }),
+    }),
+    launcherPort: () => LAUNCHER,
+    lanHosts: ['192.168.1.5'],
+    joinPort: () => JOIN,
+    phonePorts: () => new Set([PHONE]),
+  });
+  /** Calls the app the way Node would, with the socket address of a phone on the network. */
+  function send(port, method, path, { remote = '192.168.1.20', host = '192.168.1.5', body } = {}) {
+    const req = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]);
+    Object.assign(req, { method, url: path, headers: { host: `${host}:${port}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, socket: { localPort: port, remoteAddress: remote } });
+    return new Promise(resolve => {
+      const res = {
+        headersSent: false,
+        writeHead(status, headers) {
+          this.status = status;
+          this.type = headers['content-type'] ?? '';
+          this.headersSent = true;
+        },
+        setHeader() {},
+        write() {},
+        end(chunk) {
+          const text = chunk ? String(chunk) : '';
+          resolve({ status: this.status, text, json: this.type.includes('json') && text ? JSON.parse(text) : null });
+        },
+        destroy() {},
+      };
+      app.request(req, res);
+    });
+  }
+
+  test('loopback is decided on the socket address', () => {
+    for (const address of ['127.0.0.1', '127.8.9.10', '::1', '::ffff:127.0.0.1']) assert.equal(isLoopback(address), true, address);
+    for (const address of ['192.168.1.20', '10.0.0.2', '::ffff:192.168.1.20', 'fe80::1', '', undefined]) assert.equal(isLoopback(address), false, address);
+  });
+
+  test('a phone gets 403 on the overview, its events, new rooms and new players, whatever Host it sends', async () => {
+    for (const port of [LAUNCHER, PHONE, LOCAL_SEAT]) {
+      for (const [method, path] of [['GET', '/__me/state'], ['GET', '/__me/events'], ['POST', '/__me/room'], ['POST', '/__me/players']]) {
+        for (const host of ['192.168.1.5', '127.0.0.1']) {
+          const result = await send(port, method, path, { host, body: method === 'POST' ? {} : undefined });
+          assert.ok([403, 421].includes(result.status), `${method} ${path} on ${port} as ${host}: ${result.status}`);
+          assert.doesNotMatch(result.text, /geheim/);
+        }
+      }
+    }
+    assert.deepEqual(calls, []);
+  });
+
+  test('on its own seat a phone reaches only what a player needs', async () => {
+    assert.equal((await send(PHONE, 'GET', '/room/ABCDEF/player')).status, 200);
+    assert.equal((await send(PHONE, 'GET', '/sdk/mini-engine.js')).status, 200);
+    assert.equal((await send(PHONE, 'GET', '/api/v1/games/feest/player?room=ABCDEF')).status, 200);
+    for (const [method, path] of [
+      ['GET', '/room/ABCDEF/host'],
+      ['GET', '/room/ABCDEF/display'],
+      ['GET', '/api/v1/games/feest/host'],
+      ['POST', '/api/v1/rooms'],
+      ['POST', '/api/v1/rooms/ABCDEF/join'],
+      ['POST', '/api/v1/rooms/ABCDEF/display-token'],
+      ['GET', '/api/v1/rooms/ABCDEF/game-data'],
+      ['GET', '/'],
+      ['GET', '/niets'],
+    ]) {
+      assert.equal((await send(PHONE, method, path, { body: method === 'POST' ? {} : undefined })).status, 403, `${method} ${path}`);
+    }
+    assert.equal((await send(LOCAL_SEAT, 'GET', '/sdk/mini-engine.js')).status, 403, 'a seat of this computer is not a phone seat');
+    assert.equal((await send(PHONE, 'GET', '/sdk/mini-engine.js', { host: 'evil.example' })).status, 421, 'DNS rebinding stays out');
+  });
+
+  test('the join port answers only the join page, with the title and nothing else', async () => {
+    assert.equal((await send(JOIN, 'GET', '/join')).status, 200);
+    assert.deepEqual((await send(JOIN, 'GET', '/__me/join/info')).json, { title: 'Feest', open: true });
+    assert.deepEqual((await send(JOIN, 'POST', '/__me/join', { body: { name: 'Pim' } })).json, { label: 'Pim', remote: true });
+    for (const remote of ['192.168.1.20', '127.0.0.1']) {
+      for (const [method, path] of [['GET', '/__me/state'], ['GET', '/__me/events'], ['POST', '/__me/room'], ['POST', '/api/v1/rooms'], ['GET', '/room/ABCDEF/player']]) {
+        const host = remote === '127.0.0.1' ? '127.0.0.1' : '192.168.1.5';
+        assert.equal((await send(JOIN, method, path, { remote, host, body: method === 'POST' ? {} : undefined })).status, 403, `${method} ${path} from ${remote}`);
+      }
+    }
+  });
+
+  test('this computer keeps the overview', async () => {
+    const state = await send(LAUNCHER, 'GET', '/__me/state', { remote: '127.0.0.1', host: '127.0.0.1' });
+    assert.equal(state.status, 200);
+    assert.equal((await send(LAUNCHER, 'POST', '/__me/room', { remote: '127.0.0.1', host: '127.0.0.1' })).status, 200);
+    assert.deepEqual(calls, ['room']);
   });
 });

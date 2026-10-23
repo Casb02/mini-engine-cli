@@ -65,8 +65,16 @@ function update(entry, seat, reloadAll) {
   entry.dot.classList.toggle('on', seat.connected);
   entry.presence.textContent = seat.connected ? 'Verbonden' : 'Niet verbonden';
   entry.dot.title = seat.connected ? 'Verbonden' : 'Niet verbonden';
-  entry.reload.hidden = !seat.path;
-  entry.open.hidden = !seat.path;
+  entry.reload.hidden = !seat.path || seat.remote;
+  entry.open.hidden = !seat.path || seat.remote;
+  if (seat.remote && seat.path) {
+    entry.key = null;
+    const text = document.createElement('p');
+    text.className = 'empty';
+    text.textContent = 'Speelt op een ander apparaat.';
+    entry.screen.replaceChildren(text);
+    return;
+  }
   if (!seat.path) {
     entry.key = null;
     const text = document.createElement('p');
@@ -83,8 +91,23 @@ function update(entry, seat, reloadAll) {
   }
 }
 
+let phones = null;
+function showPhones(url) {
+  $('#phones').hidden = !url;
+  if (!url || url === phones) return;
+  phones = url;
+  $('#phones-url').textContent = url;
+  $('#phones-url').href = url;
+  import('/__me/qr.js')
+    .then(({ renderSVG }) => {
+      $('#phones-qr').innerHTML = renderSVG(url, { border: 2 });
+    })
+    .catch(() => {});
+}
+
 function render(state) {
   const { game, room } = state;
+  showPhones(state.join);
   document.title = `${game.title} · me dev`;
   $('#title').textContent = game.title;
   const parts = [`versie ${game.version}`, room ? `kamer ${room.code}, ${statusText[room.status] ?? room.status}` : 'geen kamer'];

@@ -1,6 +1,6 @@
 # Host-runtime patterns
 
-The scaffolded vote game (`assets/app.js`) is the reference implementation of the queue, ready/start flow and rendering. These recipes extend it. Code is plain JavaScript with JSDoc types, checked by the game's `jsconfig.json`.
+The scaffold's `assets/room.js` holds the queue (`enqueue`), `run`, the ready/start flow and the player list; `assets/app.js` holds the game. The starter templates are worked examples of these recipes: `quiz` (secrets in `host_state` and `player_states`, timers, own sets, an achievement), `buzzer` (§9) and `beurten` (turns, players leaving, §12). These recipes extend them. Code is plain JavaScript with JSDoc types, checked by the game's `jsconfig.json`.
 
 ## 1. Model state in three layers plus a phase
 
@@ -75,7 +75,7 @@ Keep `logic.js` free of DOM and SDK imports so the tests run in Node. Remember `
 
 ## 3. Host reducer
 
-`run`, `showError`, `button`, `role` and `session` are the helpers at the top of the scaffolded `assets/app.js`.
+`run`, `showError`, `button`, `role` and `enqueue` are exported by the scaffold's `assets/room.js`; `openRoom()` gives the client.
 
 Snapshots arrive with object keys sorted (the engine and `me dev` serialize JSON that way), so never decide "has it changed?" with `JSON.stringify(a) === JSON.stringify(b)` against what you published: that is always different and republishes on every snapshot, forever. Compare the fields that matter, or use a key-order-independent compare.
 
