@@ -512,6 +512,7 @@ describe('me dev knows the TV: a seatless host that shows the game', { skip: PAR
     const screen = open(tv);
     const cas = open(phone);
     await screen.waitForSnapshot(room => room.players.length === 1 && room.players[0].connected);
+    await cas.waitForSnapshot(() => true);
     await cas.ready(true);
     await screen.waitForSnapshot(room => room.players.every(p => p.ready));
     await screen.lifecycle('running');
