@@ -7,6 +7,8 @@
 
 Met de Mini Engine CLI maak, test en publiceer je je eigen partygames voor Mini Engine: een game maken vanuit het SDK-sjabloon, hem op je eigen computer spelen met `me dev`, nieuwe versies uploaden, wisselen tussen versies en de game aan- of uitzetten.
 
+Documentatie: [docs.miniengine.nl](https://docs.miniengine.nl/publiceren/cli.html). De routes die de CLI gebruikt, staan bij [API: ontwikkelaars](https://docs.miniengine.nl/api/ontwikkelaars.html).
+
 De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig.
 
 ## Installeren
@@ -100,28 +102,6 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 | `me setup` | Server, dev key, skills en een eerste game, met vragen. |
 | `me setup --server URL --token KEY --no-skills --game SLUG` | Hetzelfde zonder vragen. `--yes` kiest overal de standaard. |
 
-### Beheer
-
-Voor wie de server beheert. Hiervoor heb je het admintoken van de server nodig.
-
-| Commando | Doet |
-| --- | --- |
-| `me admin login [--token TOKEN]` / `me admin logout` | Admintoken controleren en opslaan, of vergeten. |
-| `me admin token create <gebruikersnaam> [--label TEKST] [--expires DAGEN]` | Maakt een dev key voor een bestaand account. De sleutel wordt één keer getoond. |
-| `me admin token list` | Alle dev keys met laatste gebruik en status. |
-| `me admin token revoke <id>` | Trekt een dev key in. Hij werkt direct niet meer. |
-| `me admin account verify <gebruikersnaam>` | Bevestigt het e-mailadres van een account handmatig. Een dev key kan alleen voor een account met een bevestigd adres. |
-| `me admin games` | Alle geüploade games met eigenaar. |
-| `me admin game block <id>` / `unblock <id>` | Noodstop: de engine serveert niets meer van de game, ook niet aan lopende rooms, en de eigenaar kan hem niet zelf weer aanzetten. `unblock` heft dat op. |
-
-Een ontwikkelaar aan de slag helpen:
-
-```sh
-me admin login
-me admin token create sander --label laptop --expires 90
-# geef de sleutel via een veilig kanaal door; sander draait daarna: me auth
-```
-
 ## Lokaal testen met me dev
 
 Je hebt geen engine nodig om je game te testen:
@@ -207,7 +187,7 @@ Het overzicht na de upload en `me game upload --dry-run` tonen welke achievement
 De CLI bewaart zijn instellingen in `~/.config/miniengine/config.json` (of `$XDG_CONFIG_HOME/miniengine/config.json`):
 
 ```json
-{ "server": "https://games.example.nl", "token": "med_…", "admin_token": "…" }
+{ "server": "https://games.example.nl", "token": "med_…" }
 ```
 
 Het bestand krijgt rechten `0600` en de map `0700`. Omgevingsvariabelen gaan voor het bestand:
@@ -216,9 +196,8 @@ Het bestand krijgt rechten `0600` en de map `0700`. Omgevingsvariabelen gaan voo
 | --- | --- |
 | `MINIENGINE_SERVER` | Server-URL (standaard `https://miniengine.nl`) |
 | `MINIENGINE_TOKEN` | Dev key |
-| `MINIENGINE_ADMIN_TOKEN` | Admintoken |
 
-`--server URL` gaat weer voor de omgeving en geldt voor één commando. Bij `me auth`, `me admin login` en `me setup` wordt de server ook opgeslagen.
+`--server URL` gaat weer voor de omgeving en geldt voor één commando. Bij `me auth` en `me setup` wordt de server ook opgeslagen.
 
 ## Scripts
 
@@ -239,10 +218,9 @@ me game upload ./ja-of-nee --activate --json
 ## Beveiliging
 
 - Een dev key (`med_` gevolgd door 64 tekens) is een geheim: wie hem heeft, kan namens jou games uploaden, wijzigen en verwijderen. Zet hem niet in een repository en deel hem niet in een chat. `--token` komt in je shellgeschiedenis; plakken via `me auth` of stdin voorkomt dat.
-- De CLI toont sleutels nooit volledig, alleen als `med_…abcd`. De enige uitzondering is `me admin token create`, dat de nieuwe sleutel één keer toont.
+- De CLI toont sleutels nooit volledig, alleen als `med_…abcd`.
 - Geüploade games draaien op hetzelfde domein als Mini Engine, met hetzelfde vertrouwen als de ingebouwde games. Daarom krijgen alleen uitgenodigde ontwikkelaars een dev key.
-- Lekt een sleutel, trek hem dan in met `me admin token revoke <id>`. `me auth logout` haalt hem alleen van je eigen computer.
-- Het admintoken geeft volledige controle over alle dev keys en games. Gebruik `me admin login` alleen op je eigen machine.
+- Lekt een sleutel, vraag dan wie de server beheert om hem in te trekken. `me auth logout` haalt hem alleen van je eigen computer.
 
 ## Ontwikkeling
 
@@ -253,12 +231,4 @@ npm run sync-vendor      # haalt sjablonen en skills opnieuw uit ../mini-engine-
 
 `vendor/` bevat een kopie van het gamesjabloon (`bin/templates.mjs` en `types/mini-engine.d.ts`) en de skills uit de Mini Engine SDK. Pas die bestanden niet met de hand aan: `scripts/sync-vendor.mjs` kopieert ze uit een SDK-checkout (`--sdk PAD` of `MINI_ENGINE_SDK`) en legt hashes en SDK-versie vast in `vendor/VENDOR.json`. `npm test` faalt als `vendor/` daarvan afwijkt.
 
-De tests draaien tegen een nagebouwde server. Tegen een echte testserver, met het admintoken daarvan:
-
-```sh
-MINIENGINE_E2E_SERVER=https://test.example.nl \
-MINIENGINE_E2E_ADMIN_TOKEN=… \
-npm run e2e
-```
-
-Dat script registreert een testaccount, maakt een dev key, logt in, maakt en uploadt een game, speelt de versies, rooms, aan/uit, blokkeren, opruimen en verwijderen door en trekt de sleutel weer in. Gebruik het alleen tegen een testserver.
+De tests draaien tegen een nagebouwde server. `npm run e2e` draait de CLI tegen een echte testserver: uploaden, versies, rooms, aan en uit, opruimen en verwijderen. Het script zegt zelf welke gegevens van die server het nodig heeft. Gebruik het alleen tegen een testserver.

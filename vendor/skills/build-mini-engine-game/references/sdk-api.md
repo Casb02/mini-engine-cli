@@ -1,6 +1,6 @@
 # SDK API for game pages
 
-Game pages import the bundle the engine serves: `import { … } from '/sdk/mini-engine.js'`. The full typed surface is the single file `types/mini-engine.d.ts` (copied into every scaffolded game). When in doubt, read that file — it is the contract. Mini Engine and `me dev` also serve it at `/sdk/mini-engine.d.ts`.
+Game pages import the bundle the engine serves: `import { … } from '/sdk/mini-engine.js'`. The full typed surface is the single file `types/mini-engine.d.ts` (copied into every scaffolded game). When in doubt, read that file — it is the contract. Mini Engine and `me dev` also serve it at `/sdk/mini-engine.d.ts`. The routes and WebSocket messages underneath are documented at https://docs.miniengine.nl/api/overzicht.html and in the public API reference PDF (https://docs.miniengine.nl/downloads/MiniEngine-API-v0.6.pdf).
 
 ## Session → client
 
