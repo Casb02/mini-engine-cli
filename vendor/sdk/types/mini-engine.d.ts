@@ -162,6 +162,8 @@ export interface Manifest<Settings = Record<string, Json>> {
     set_kinds?: SetKind[];
     /** Optional package path `assets/<name>.svg`: a square SVG tile of at most 64 KiB, without scripts, event attributes or `<foreignObject>`. Absent → the engine's own mark. */
     icon?: string;
+    /** Uploaded games only: the uploader's display name, set by the server (Mini Engine 0.6.1+). A manifest cannot set it. */
+    author?: string;
 }
 export interface RoomCredentials {
     code: string;
