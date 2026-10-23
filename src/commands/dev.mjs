@@ -45,7 +45,7 @@ export async function runDev(ctx, dir, { port = 3170, players = 2, setFile = nul
     const seats = state.seats.map(seat => ({ role: seat.role, name: seat.label, port: seat.port }));
     ctx.stdout.write(`${JSON.stringify({ url: dev.url, lan_url: dev.lanUrl, game, room: state.room?.code ?? null, seats }, null, 2)}\n`);
   } else {
-    const shown = relative(ctx.cwd, dir) || '.';
+    const shown = relative(ctx.cwd, dir) || 'deze map';
     const names = state.seats.filter(seat => seat.role === 'player').map(seat => seat.label);
     const who = ['spelleider', ...(game.has_display ? ['scherm'] : []), `${names.length} ${names.length === 1 ? 'speler' : 'spelers'}${names.length ? ` (${names.join(', ')})` : ''}`];
     const phones = lan
