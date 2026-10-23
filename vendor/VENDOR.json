@@ -2,15 +2,15 @@
   "sdk": {
     "name": "@casb02/mini-engine-sdk",
     "version": "0.5.2",
-    "commit": "c89a26cccd0508323deeeb94e337986f79d66c36",
+    "commit": "bc2ccd285e20353c8533a176855e638065442127",
     "dirty": false
   },
   "files": {
     "sdk/bin/templates.mjs": "97970fa9daf80654012da9286c481315e00dcce87a7aba50a36b9fad282cc6b5",
     "sdk/dist/mini-engine.js": "3e06c57976353dac48d400571dc1d9b176efe1f18fca20046bb6dc3567586018",
-    "sdk/types/mini-engine.d.ts": "8e1461c0502afcc616623ed82fb1a3ae1c5f4e7f480db951ca4304ea6ab65c30",
+    "sdk/types/mini-engine.d.ts": "feeb77ee8b318ce2a739b5052e8731b243ee6e53f1bf10c89bffe6af81139aa9",
     "skills/build-mini-engine-game/SKILL.md": "65a154f6f66d4af5dbe45fdd79e959875e509d431fc817d98a84d029b1832eba",
-    "skills/build-mini-engine-game/references/host-runtime-patterns.md": "3beca4d25defbb6f74d3b3c01ae6faf35a086527ecaecee01882672bf59456b2",
+    "skills/build-mini-engine-game/references/host-runtime-patterns.md": "e5a7bb376a90cbc787e236af77ad0f7400864df72aa3120cc023aa9688841abf",
     "skills/build-mini-engine-game/references/manifest-and-settings.md": "fd91637fdffdaa9216608a733075b5166067ea0c4fa7e2f8e63b442d36457715",
     "skills/build-mini-engine-game/references/sdk-api.md": "b6b281fef94e3f707f740deea6fea12a0a1128787a7af75378e6389a284930d3",
     "skills/build-mini-engine-game/references/verify-and-troubleshoot.md": "ccd614fabdb6f5e93484d135823d2d37e8ba88b881a9f7f32eb798f7e7316659",

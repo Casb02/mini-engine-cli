@@ -381,7 +381,7 @@ export const offlineDue = (clock, now) => clock?.since != null && now - clock.si
 
 The referee recomputes the clock on every snapshot, sets a timer to `since + OFFLINE_SKIP_MS` and, inside the queue, publishes the skip only if the clock is still due for that same turn.
 
-**Keep the screen on.** While a game runs, the seat view and the TV view ask for a wake lock: phones lock less often, and the TV, which nobody touches and which is the referee, does not dim or sleep. Ask again when the page becomes visible, and ignore every failure:
+**Keep the screen on.** Since Mini Engine 0.6.1 the room page around every game holds a screen wake lock itself (and asks again after a tap or when the tab returns), so a game needs nothing for this. On older servers, or under `me dev`, the seat view and the TV view can ask themselves; the TV, which nobody touches and which is the referee, matters most. Ask again when the page becomes visible, and ignore every failure:
 
 ```js
 let lock = null;
