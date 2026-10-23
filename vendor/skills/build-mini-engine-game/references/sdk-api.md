@@ -33,7 +33,7 @@ const client = new MiniEngine(session).connect(); // after the null check
 | `realtime.on(channel \| '*', fn)` | all | `fn(data, from, ts, channel)`; `from` = `{role, player_id}` and `ts` (server receive time, ms) are set by the engine. Returns unsubscribe. |
 | `realtime.set(key, value)` | all | This connection's latest-wins value; `null` deletes. Coalesced per key, sent at most every 33 ms (`new MiniEngine({..., realtime: {setInterval}})`). Does nothing while not connected. |
 | `realtime.value(from, key)` | all | Current value from `'host'`, `'display'`, a player id or a `from` object; `undefined` if none. |
-| `realtime.onValue(key \| '*', fn)` | all | `fn(value, from, ts, key)`; `value` is `null` when deleted, when its player left, or after a reset. Fires for current values after (re)connecting. |
+| `realtime.onValue(key \| '*', fn)` | all | `fn(value, from, ts, key)`; `value` is `null` when deleted, when its player left, or after a reset. Fires for current values after (re)connecting. Your own `set()` also fires your own handlers immediately (local echo, `ts` = this device's clock): skip `from.player_id === myId` when you only draw others, or a render that calls `set()` loops. |
 | `realtime.reset()` | host | Clears every value in the room; values the host sets afterwards are kept. |
 | `close()` | all | Stops reconnecting; call on `pagehide`, `resume()` on `pageshow` (scaffold does this). |
 

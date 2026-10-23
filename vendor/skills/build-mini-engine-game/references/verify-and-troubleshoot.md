@@ -49,6 +49,8 @@ node --test tests/*.test.mjs             # pure rules in assets/logic.js
 
 ## Scripted play-through (Playwright)
 
+For 3D games, launch Chromium with the GPU on: headless Chromium falls back to software rendering, and several WebGL pages then crawl at 10 fps (on macOS: `chromium.launch({ args: ['--enable-gpu', '--use-angle=metal'] })`).
+
 `scripts/play.mjs` in this skill drives a real room: it creates the room over HTTP, injects each seat's credentials into its own browser context exactly like the launcher, opens `/room/CODE/<role>` (the real shell and iframe) and opens the display through its `#token` link. Copy it to `games/<id>/tests/play.mjs`, replace the game-specific block (it ships with steps for the scaffolded vote game), start the engine, then from the engine checkout:
 
 ```sh
