@@ -2,7 +2,7 @@
   "sdk": {
     "name": "@casb02/mini-engine-sdk",
     "version": "0.7.0",
-    "commit": "151d4cb0fc1b212a5caf413688a719081412521d",
+    "commit": "518cf0eb807383e8bd32283ee028cd7eae2c254e",
     "dirty": false
   },
   "files": {
