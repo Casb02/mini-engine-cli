@@ -30,7 +30,7 @@ Play a complete game: ready → start → every round → finish → new game. T
 
 ## Scripted play-through (Playwright)
 
-`scripts/play.mjs` in this skill drives a whole room: it creates the room over HTTP, puts each seat's credentials into its own browser context exactly like the room launcher, opens `/room/CODE/<role>` (the real shell and iframe) for the host, the players and the display, and saves phone- and TV-sized screenshots. It works against `me dev` and against a server where the game is uploaded and active.
+`scripts/play.mjs` in this skill drives a whole room: it creates the room over HTTP, puts each seat's credentials into its own browser context exactly like the room launcher, opens `/room/CODE/<role>` (the real shell and iframe) for the host, the players and the display, and saves phone- and TV-sized screenshots. Phone seats default to 393×660, the part of an iPhone that Safari leaves visible with its bars showing; pass `{ width: 375, height: 548 }` for an iPhone SE. It works against `me dev` and against a server where the game is uploaded and active.
 
 Copy it to `<game>/tests/play.mjs` (`me game upload` skips `tests/`), replace the game-specific block (it ships with steps for the scaffolded vote game), then:
 
@@ -110,6 +110,7 @@ curl -s -H "Authorization: Bearer $DISPLAY_TOKEN" http://127.0.0.1:3170/api/v1/r
 | `invalid_transition` | Lifecycle must go `lobby → running → finished → lobby`. |
 | `state_too_large` | Published state > 64 KiB; keep history short, send ids not full objects. |
 | Scores vanish after "new round" | `lifecycle('lobby')` wipes state; keep rounds inside `running`. |
+| On a phone the bottom of the game (a hand, the action button) is hidden behind the browser's toolbar, or the page needs scrolling | The page is taller than the visible area. Fill the frame with `height: 100%` or `100dvh` and no `min-height: 100vh`, and make the layout fit 393×660 and 375×548 (design-mini-engine-game-ui, "Phone browsers"). On an engine older than 0.6.5 the room page itself made the frame too tall. |
 | `session_replaced` / a tab goes silent | The same seat was opened in another tab. |
 | Display shows nothing / "Open het scherm via de schermlink" | Display opened without its credentials (the `#token` link or the `me dev` seat), or display disabled for the room. |
 | `realtime.emit` returns `false`, or realtime handlers never fire | Not connected yet (wait for the first snapshot), a server older than 0.5, or the event targets someone else (`to`). The sender only gets its own event with `echo: true`. |

@@ -15,13 +15,22 @@ Exception: when the user chose **MiniEngineUI**, the look comes from the mini-en
 
 | Page | Device and distance | Design for |
 | --- | --- | --- |
-| `player.html` | Phone in hand, portrait, 360–430 px wide, thumbs | One clear primary action per phase. Touch targets ≥ 48×48 px with ≥ 8 px spacing; no hover-only affordances; no horizontal scroll; respect `env(safe-area-inset-*)`. Show the player's own secret (`private_state`) privately and plainly. Confirm submissions ("Sent — waiting for the others") and disable the control while pending. |
+| `player.html` | Phone in hand, portrait, 360–430 px wide, thumbs | One clear primary action per phase. Touch targets ≥ 48×48 px with ≥ 8 px spacing; no hover-only affordances; no horizontal scroll; fits the visible area of a phone browser (see below). Show the player's own secret (`private_state`) privately and plainly. Confirm submissions ("Sent — waiting for the others") and disable the control while pending. |
 | `display.html` | TV or laptop across the room, 16:9 (1920×1080 and 1280×720), nobody touching it | Readable from 3–4 m: key numbers and names `clamp()`-sized to several percent of viewport height, body text ≥ ~2.5vh, contrast ≥ 7:1, no scrolling, no controls needed. In the lobby show how to join large: the QR code of the join link beside the room code and "Go to `${location.host}` and enter the code" (host only, no `/home`: the root redirects there; the iframe has the engine's origin). Once the game runs, the QR goes and the code stays small in the bar. Reveals are the show: give them space. |
 | `host.html` | The creator's phone, or the TV | Depends on `room.config.host_mode`. **`playing` ("Iedereen doet mee", the default for party games):** exactly the player's page, because the creator is a player like everyone else. Add only "Start het spel" in the lobby (instead of "Ik ben klaar"), "Nieuw spel" afterwards, a quiet "Spel stoppen" link at the bottom and game-specific steps (walking through the final drawings). No console, no skip button, no cards for players, rules or the shared screen. **`tv`:** the shared screen as in `display.html`, plus "Start het spel" and "Nieuw spel". **`moderator` (a quiz master):** a console: phase, who is ready/submitted/offline, the next action as the most prominent button, destructive actions visually secondary. Label secret information "only you see this" and keep it behind a show/hide toggle (hidden by default), because hosts share or mirror their screen. |
 
 In a party game the creator is one of the players: do not mark them as host. Other pages may say who starts ("Hessel start het spel als iedereen klaar is."). `room.host_player_id` is `null` with TV or a quiz master.
 
 Design every state, not just the happy path: connecting, reconnecting (`client.connected` false), host away (`room.host_connected` false — tell players to wait), lobby with ready status, waiting for others, revealed, finished, error. Render from the latest snapshot every time; a reloaded page must look right immediately.
+
+## Phone browsers: the visible area
+
+The game runs in an iframe of the engine's room page, and the room page makes that frame exactly the visible part of the browser window (`100dvh`). On a phone the game therefore sits between the browser's address bar and toolbar, which is much shorter than the screen: about **393×660** on an iPhone 15/16 in Safari with both bars showing, and about **375×548** on an iPhone SE. Design the player page and the creator's page for those sizes, not for the full 390×844 screen.
+
+- Fill the frame: `html, body { height: 100% }` or `height: 100dvh`, then lay out with flex or grid. Never pair a `dvh` height with `min-height: 100vh`: `100vh` is the height with the bars tucked away, so the minimum wins and the bottom of the page slides under the toolbar.
+- The primary action and the player's own material (hand, dice, board, input) stay visible without scrolling the page. Long content scrolls in its own panel while the action stays in view. When the height runs short (`@media (max-height: 600px)`), shrink cards, art and margins before hiding anything.
+- Keep important controls a little off the bottom edge, and pad edge-pinned elements with `max(12px, env(safe-area-inset-bottom))` (and the other sides likewise). Inside the frame these insets are usually 0, but they count when the page runs full screen or outside the room page. Adding `viewport-fit=cover` to the game does not put the game under the browser's bars: the room page decides that.
+- Give every page a `theme-color` per colour scheme (`<meta name="theme-color" content="#…" media="(prefers-color-scheme: dark)">`, and one for light). Since engine 0.6.5 the room page paints the strip around the browser's toolbar in that colour, so it matches the game instead of the engine's own background.
 
 ## Room code and joining
 
@@ -82,7 +91,7 @@ An optional `icon` in the manifest (`assets/<name>.svg`, rules in `build-mini-en
 
 ## Check before you call it done
 
-- Screenshots at phone width 360–390 px (player), 1920×1080 and 1280×720 (display), 1280×800 (host) — `build-mini-engine-game/scripts/play.mjs` takes them. View them.
+- Screenshots of the phone pages at the visible browser area, **393×660 and 375×548**, in light and dark, in the lobby, during your own turn and at the end; the display at 1920×1080 and 1280×720; the host at 1280×800 for TV or console, or at phone size when the creator plays along. `build-mini-engine-game/scripts/play.mjs` takes them. View them: nothing the player needs may sit below the bottom edge.
 - No horizontal scroll on the player page; the display readable when its screenshot is scaled to a quarter.
 - Keyboard: every control reachable and visible on focus.
 - Browser console free of CSP and 404 errors on all three pages.
