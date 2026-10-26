@@ -80,7 +80,9 @@ describe('help and usage', () => {
     assert.deepEqual(await runMe([], { home }).then(r => r.stdout), result.stdout);
     const admin = await runMe(['admin', '--help'], { home });
     assert.equal(admin.code, 0);
-    for (const text of ['admin login', 'admin token create', 'admin game block <id>', 'admin account verify']) assert.match(admin.stdout, new RegExp(text));
+    for (const text of ['admin login', 'admin token create', 'admin game block <id>', 'admin account verify', 'admin account promote <gebruikersnaam>', 'admin account demote <gebruikersnaam>', 'admin account limit <gebruikersnaam> <aantal>', 'admin accounts \\[zoekterm\\]']) {
+      assert.match(admin.stdout, new RegExp(text));
+    }
     assert.match((await runMe(['admin', 'token', 'create', '--help'], { home })).stdout, /--expires DAGEN/);
   });
 
@@ -588,6 +590,70 @@ describe('admin', () => {
     assert.equal((await authed(['game', 'enable', 'kwis', '--json'])).json().error.code, 'game_blocked');
     const unblock = await admin(['admin', 'game', 'unblock', 'kwis']);
     assert.match(unblock.stdout, /vrijgegeven en staat aan/);
+  });
+
+  test('account promote and demote round trip', async () => {
+    fake.addAccount('joost');
+    const promoted = await admin(['admin', 'account', 'promote', 'Joost']);
+    assert.equal(promoted.code, 0, promoted.stderr);
+    assert.match(promoted.stdout, /@joost is nu beheerder\. Op de site kan die alle games blokkeren of vrijgeven/);
+    assert.deepEqual(fake.state.requests.at(-1).body, { admin: true });
+    assert.equal(fake.state.requests.at(-1).path, '/api/v1/admin/accounts/Joost/admin');
+    const isAdmin = async () => (await admin(['admin', 'accounts', '--json'])).json().accounts.find(a => a.username === 'joost').admin;
+    assert.equal(await isAdmin(), true);
+    const demoted = await admin(['admin', 'account', 'demote', 'joost', '--json']);
+    assert.equal(demoted.json().admin, false);
+    assert.equal(await isAdmin(), false);
+    assert.match((await admin(['admin', 'account', 'demote', 'joost'])).stdout, /@joost is geen beheerder meer\./);
+  });
+
+  test('account limit validates the number before sending', async () => {
+    await uploaded(['0.1.0']);
+    const set = await admin(['admin', 'account', 'limit', 'sander', '25']);
+    assert.equal(set.code, 0, set.stderr);
+    assert.match(set.stdout, /@sander mag nu 25 games uploaden \(heeft er 1\)\./);
+    assert.deepEqual(fake.state.requests.at(-1).body, { game_limit: 25 });
+    assert.match((await admin(['admin', 'accounts'])).stdout, /sander\s+Sander\s+–\s+1 van 25\s+–/);
+    for (const bad of ['0', 'abc', '101', '2.5']) {
+      const before = fake.state.requests.length;
+      const result = await admin(['admin', 'account', 'limit', 'sander', bad]);
+      assert.equal(result.code, 2, bad);
+      assert.match(result.stderr, /heel getal van 1 tot 100/);
+      assert.equal(fake.state.requests.length, before);
+    }
+  });
+
+  test('account commands on an unknown user show the server message', async () => {
+    for (const args of [['promote', 'niemand'], ['demote', 'niemand'], ['limit', 'niemand', '5']]) {
+      const result = await admin(['admin', 'account', ...args]);
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /Er is geen account met deze gebruikersnaam\./);
+    }
+  });
+
+  test('accounts lists and searches', async () => {
+    fake.addAccount('joost');
+    fake.addAccount('anouk');
+    await admin(['admin', 'account', 'verify', 'joost']);
+    const all = await admin(['admin', 'accounts']);
+    assert.equal(all.code, 0, all.stderr);
+    assert.match(all.stdout, /^GEBRUIKER\s+NAAM\s+BEHEERDER\s+GAMES\s+E-MAIL\nanouk\s.*\njoost\s+Joost\s+–\s+0 van 10\s+bevestigd\nsander\s/);
+    const search = await admin(['admin', 'accounts', 'OOS', '--json']);
+    assert.deepEqual(search.json().accounts.map(a => a.username), ['joost']);
+    assert.deepEqual(fake.state.requests.at(-1).query, { q: 'OOS' });
+    const none = await admin(['admin', 'accounts', 'zzz & co']);
+    assert.equal(none.code, 0);
+    assert.match(none.stdout, /Geen accounts gevonden voor "zzz & co"\./);
+    assert.deepEqual(fake.state.requests.at(-1).query, { q: 'zzz & co' });
+  });
+
+  test('account commands with a wrong admin token', async () => {
+    const env = { MINIENGINE_ADMIN_TOKEN: 'w'.repeat(40) };
+    for (const args of [['accounts'], ['account', 'promote', 'sander'], ['account', 'limit', 'sander', '5']]) {
+      const result = await me(['admin', ...args], { env });
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /Het admintoken klopt niet\. Log opnieuw in met: me admin login/);
+    }
   });
 
   test('admin_disabled and missing token', async () => {

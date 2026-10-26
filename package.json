@@ -1,6 +1,6 @@
 {
   "name": "@casb02/mini-engine-cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Command-line tool to upload and manage Mini Engine games",
   "type": "module",
   "bin": {

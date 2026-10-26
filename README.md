@@ -137,7 +137,7 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 
 ```
 ✓ Node.js 22.12.0
-✓ CLI 0.6.0 is de nieuwste versie
+✓ CLI 0.7.0 is de nieuwste versie
 ✓ Server https://miniengine.nl (standaard) is bereikbaar, Mini Engine 0.6.1
 ✗ Geen dev key voor https://miniengine.nl; uploaden kan nog niet. Spelen met me dev lukt wel.
     Vraag een dev key aan wie de server beheert en log in met: me auth

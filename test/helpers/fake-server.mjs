@@ -31,7 +31,7 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
   const state = { accounts: new Map(), tokens: [], games: new Map(), requests: [], adminToken, version };
 
   const addAccount = username => {
-    const account = { id: randomUUID(), username, display_name: username[0].toUpperCase() + username.slice(1) };
+    const account = { id: randomUUID(), username, display_name: username[0].toUpperCase() + username.slice(1), admin: false, email_verified: false, created_at: clock, game_limit: quotaGames };
     state.accounts.set(username, account);
     return account;
   };
@@ -64,6 +64,22 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
   const adminView = game => {
     const owner = state.accounts.get(game.owner);
     return { ...view(game), owner: { id: owner.id, username: owner.username, display_name: owner.display_name } };
+  };
+
+  const ownedGames = username => [...state.games.values()].filter(g => g.owner === username).length;
+  const accountView = account => ({
+    username: account.username,
+    display_name: account.display_name,
+    admin: account.admin,
+    email_verified: account.email_verified,
+    created_at: account.created_at,
+    games: ownedGames(account.username),
+    game_limit: account.game_limit,
+  });
+  const findAccount = raw => {
+    const account = state.accounts.get(decodeURIComponent(raw).trim().toLowerCase());
+    if (!account) fail(404, 'account_not_found', 'Er is geen account met deze gebruikersnaam.');
+    return account;
   };
 
   const bearer = req => /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1];
@@ -107,8 +123,8 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     if (builtins.includes(id)) fail(409, 'game_id_taken', 'Deze id is van een ingebouwde game.');
     let game = state.games.get(id);
     if (game && game.owner !== account.username) fail(403, 'forbidden', 'Deze game is van een andere ontwikkelaar.');
-    if (!game && [...state.games.values()].filter(g => g.owner === account.username).length >= quotaGames) {
-      fail(409, 'quota_games', `Je hebt al ${quotaGames} games.`);
+    if (!game && ownedGames(account.username) >= account.game_limit) {
+      fail(409, 'quota_games', `Je hebt al ${account.game_limit} games.`);
     }
     if (game?.releases.some(r => r.version === manifest.version)) fail(409, 'version_exists', 'Deze versie bestaat al. Verhoog version in manifest.json.');
     if (game && game.releases.length >= quotaReleases) fail(409, 'quota_releases', `Een game mag ${quotaReleases} versies bewaren. Verwijder eerst oude versies.`);
@@ -124,7 +140,7 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     return [201, { game: view(game), release: release(game, created) }];
   }
 
-  function route(method, path, req, body) {
+  function route(method, path, req, body, query) {
     let m;
     if (method === 'GET' && path === '/api/health') return [200, { status: 'ok', version: state.version }];
     if (path.startsWith('/api/v1/admin/')) {
@@ -150,6 +166,28 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
         if (!account) fail(404, 'account_not_found', 'Dit account bestaat niet.');
         account.email_verified = true;
         return [200, { username: account.username, email: `${account.username}@example.com`, email_verified: true }];
+      }
+      if (method === 'GET' && path === '/api/v1/admin/accounts') {
+        const q = (query.get('q') ?? '').trim().toLowerCase();
+        const accounts = [...state.accounts.values()]
+          .filter(a => !q || a.username.includes(q) || a.display_name.toLowerCase().includes(q))
+          .sort((a, b) => a.username.localeCompare(b.username))
+          .slice(0, 50)
+          .map(accountView);
+        return [200, { accounts }];
+      }
+      if (method === 'PUT' && (m = /^\/api\/v1\/admin\/accounts\/([^/]+)\/admin$/.exec(path))) {
+        const account = findAccount(m[1]);
+        if (typeof body?.admin !== 'boolean') fail(400, 'bad_request', 'admin moet true of false zijn.');
+        account.admin = body.admin;
+        return [200, accountView(account)];
+      }
+      if (method === 'PUT' && (m = /^\/api\/v1\/admin\/accounts\/([^/]+)\/game-limit$/.exec(path))) {
+        const account = findAccount(m[1]);
+        const limit = body?.game_limit;
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) fail(400, 'bad_request', 'De gamelimiet is een heel getal van 1 tot 100.');
+        account.game_limit = limit;
+        return [200, accountView(account)];
       }
       if (method === 'GET' && path === '/api/v1/admin/games') return [200, { games: [...state.games.values()].map(adminView) }];
       if (method === 'PUT' && (m = /^\/api\/v1\/admin\/games\/([^/]+)$/.exec(path))) {
@@ -229,9 +267,9 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
             fail(400, 'invalid_json', 'Ongeldige JSON.');
           }
         }
-        const path = new URL(req.url, 'http://x').pathname;
-        state.requests.push({ method: req.method, path, body, authorization: req.headers.authorization });
-        const [status, data] = route(req.method, path, req, body);
+        const { pathname: path, searchParams } = new URL(req.url, 'http://x');
+        state.requests.push({ method: req.method, path, query: Object.fromEntries(searchParams), body, authorization: req.headers.authorization });
+        const [status, data] = route(req.method, path, req, body, searchParams);
         send(status, data);
       } catch (error) {
         if (error instanceof HttpError) send(error.status, { error: { code: error.code, message: error.message } });
