@@ -9,7 +9,7 @@ Met de Mini Engine CLI maak, test en publiceer je je eigen partygames voor Mini 
 
 Documentatie: [docs.miniengine.nl](https://docs.miniengine.nl/publiceren/cli.html). De routes die de CLI gebruikt, staan bij [API: ontwikkelaars](https://docs.miniengine.nl/api/ontwikkelaars.html).
 
-De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig.
+De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig, afbeeldingen in eigen sets Mini Engine 0.8.
 
 ## Installeren
 
@@ -109,7 +109,7 @@ Elk commando heeft `--help`, bijvoorbeeld `me game upload --help`.
 | Commando | Wat |
 | --- | --- |
 | `me dev [map]` | Start een lokale, nagebootste engine voor je game en opent een overzicht met de spelleider, het scherm en de spelers naast elkaar. |
-| `me dev --players 4 --set bord.json` | Met vier spelers, en met `bord.json` als eigen set in plaats van `data.json`. |
+| `me dev --players 4 --set bord.json` | Met vier spelers, en met `bord.json` als eigen set in plaats van `data.json`. Afbeeldingen voor die set staan in `media/` naast `bord.json`. |
 | `me dev --lan` | Ook telefoons op hetzelfde wifi doen mee, via het adres dat `me dev` toont. |
 
 ### AI-skills
@@ -137,7 +137,7 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 
 ```
 ✓ Node.js 22.12.0
-✓ CLI 0.7.0 is de nieuwste versie
+✓ CLI 0.8.0 is de nieuwste versie
 ✓ Server https://miniengine.nl (standaard) is bereikbaar, Mini Engine 0.6.1
 ✗ Geen dev key voor https://miniengine.nl; uploaden kan nog niet. Spelen met me dev lukt wel.
     Vraag een dev key aan wie de server beheert en log in met: me auth
@@ -147,7 +147,7 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 1 ding om op te lossen.
 ```
 
-In een map met `manifest.json` doet doctor dezelfde controles als `me game upload --dry-run`, en kijkt hij of de pagina's alleen bestanden uit het spel laden. Ben je ingelogd, dan meldt hij ook of deze versie al op de server staat. Zonder internet slaat hij de controle op een nieuwere CLI over. De exitcode is 1 als er iets op te lossen is.
+In een map met `manifest.json` doet doctor dezelfde controles als `me game upload --dry-run`, en kijkt hij of de pagina's alleen bestanden uit het spel laden en of de afbeeldingen in `data.json` in het spel staan. Ben je ingelogd, dan meldt hij ook of deze versie al op de server staat. Zonder internet slaat hij de controle op een nieuwere CLI over. De exitcode is 1 als er iets op te lossen is.
 
 ## Lokaal testen met me dev
 
@@ -163,6 +163,31 @@ me dev
 Pas je iets aan in de map, dan laden de stoelen opnieuw en blijft de kamer bestaan. Een fout in het manifest zie je in het overzicht en in de terminal. Gekregen achievements verschijnen in de terminal. De kamer krijgt de `default_host_mode` uit het manifest; wil je lokaal TV of een aparte spelleider proberen, zet die dan even als standaard. Alles staat alleen in het geheugen; stoppen doe je met Ctrl+C.
 
 Het overzicht en elke stoel bedienen dezelfde adressen als de server, zoals `/api/v1/rooms` en `/room/CODE/ROL`. Zo kan een script met Playwright een hele kamer bespelen; de skill `build-mini-engine-game` levert daarvoor `scripts/play.mjs`.
+
+### Afbeeldingen in een eigen set
+
+Een veld `{ "type": "string", "format": "image" }` in een set-schema is een afbeelding. Op de server uploadt een speler die in de set-editor; in de set staat dan `"/media/<id>"`, en de game toont hem met `<img src="…">`. Lokaal test je zo'n set met `--set`: zet de afbeeldingen in een map `media/` naast het set-bestand en noem ze in de set met `/media/<naam>`:
+
+```
+sets/
+  dieren.json      { "vragen": [{ "vraag": "Wie is dit?", "plaatje": "/media/kat.png" }] }
+  media/
+    kat.png
+```
+
+```sh
+me dev --set sets/dieren.json
+```
+
+`me dev` controleert de set zoals de engine dat doet, met deze regels voor een afbeelding:
+
+- Een naam heeft alleen letters, cijfers, `.`, `_` en `-` en begint niet met een punt; het bestand staat in `media/` en is een PNG, JPEG, WebP of GIF (herkend aan de inhoud, niet aan de naam) van hoogstens 10 MiB.
+- `/media/<id>` met het id van een upload op de server (32 tekens `0-9a-f`) mag ook. Die afbeelding staat niet op je computer, dus lokaal zie je hem niet.
+- Een lege tekst is geen afbeelding. Een afbeelding die niet in `required` staat, mag je weglaten.
+
+`me dev` serveert `/media/<naam>` op het overzicht en op elke stoel (ook die van telefoons met `--lan`), met het juiste `Content-Type`, `X-Content-Type-Options: nosniff` en `Content-Security-Policy: default-src 'none'; sandbox`, net als de server. Onbekende namen geven 404. De pagina's van de game mogen afbeeldingen van hun eigen adres laden (`img-src 'self'`), dus `<img src="/media/kat.png">` werkt zonder meer. De server verkleint uploads tot hoogstens 1920 pixels en 1 MiB; `me dev` serveert je bestand zoals het is.
+
+In de eigen `data.json` van de game (de inhoud zonder gekozen set) is een afbeelding een bestand in het spel, zoals `assets/vragen/1.png`: een pad onder `assets/`, zonder `..`. De game laadt het via `/games/<id>/assets/…`, net als zijn scripts. Heeft `data.json` de vorm van een soort set, dan waarschuwt `me dev` (en meldt `me doctor`) als zo'n afbeelding geen pad in `assets/` is of niet in het spel staat.
 
 Met `me dev --lan` doen ook telefoons op hetzelfde wifi mee. `me dev` toont dan een adres zoals `http://192.168.1.20:3171/join`, en in het overzicht een QR-code. Een telefoon opent dat adres, kiest een naam en krijgt een eigen stoel; het overzicht toont die stoel zonder scherm. Alleen die aanmeldpagina en de stoelen van de telefoons staan op het netwerk, en een telefoon kan daar alleen wat een speler nodig heeft. Het overzicht, **Nieuwe kamer**, **Speler toevoegen** en de andere stoelen blijven op je eigen computer (`127.0.0.1`). Er doen hoogstens 8 telefoons tegelijk mee; bij **Nieuwe kamer** gaan hun stoelen dicht en doen ze opnieuw mee via hetzelfde adres. Iedereen op het netwerk kan de aanmeldpagina openen, dus gebruik `--lan` alleen op een netwerk dat je vertrouwt.
 
@@ -227,9 +252,9 @@ Sinds Mini Engine 0.5 kan `manifest.json` twee lijsten bevatten:
 ]
 ```
 
-Voor het uploaden controleert de CLI de vorm: een `id` heeft 1 tot 48 kleine letters, cijfers, `_` of `-`, begint met een letter of cijfer en komt per lijst één keer voor; een titel heeft 1 tot 60 tekens en een beschrijving 1 tot 160, zonder regeleinden; `schema` is een object. Of het schema zelf klopt, controleert de server bij de upload.
+Voor het uploaden controleert de CLI de vorm: een `id` heeft 1 tot 48 kleine letters, cijfers, `_` of `-`, begint met een letter of cijfer en komt per lijst één keer voor; een titel heeft 1 tot 60 tekens en een beschrijving 1 tot 160, zonder regeleinden; `schema` is een object. Of het schema zelf klopt, controleert de server bij de upload; `me dev` controleert het al met dezelfde regels. Een tekstveld kan een afbeelding zijn met `"format": "image"` (vanaf Mini Engine 0.8); dan horen `minLength`, `maxLength` en `enum` er niet bij. Zie [Afbeeldingen in een eigen set](#afbeeldingen-in-een-eigen-set).
 
-Het overzicht na de upload en `me game upload --dry-run` tonen welke achievements en soorten sets de game heeft. Draait de server een versie ouder dan 0.5, dan krijg je voor het uploaden een waarschuwing: zo'n server negeert deze velden. De upload gaat wel door.
+Het overzicht na de upload en `me game upload --dry-run` tonen welke achievements en soorten sets de game heeft. Draait de server een versie ouder dan 0.5, dan krijg je voor het uploaden een waarschuwing: zo'n server negeert deze velden. Gebruikt een soort set afbeeldingen en draait de server een versie ouder dan 0.8, dan waarschuwt de CLI ook: zo'n server weigert dat schema. De upload gaat in beide gevallen wel door.
 
 ## Configuratie
 
