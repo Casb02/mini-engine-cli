@@ -84,9 +84,19 @@ await http(`/api/v1/rooms/${code}/leave`, { method: 'POST', token: session.token
 
 These need the account token (`new ApiClient({accountToken})`), which game pages normally do not have; players manage sets at `/home/sets`. `api.achievements(token?)` → `{achievements: [{game_id, game_title, id, title, description, source, awarded_at}]}`, newest first. Sets: `listSets({game_id?, kind?})` (without content), `getSet(id)`, `createSet({game_id, kind, title, data})`, `updateSet(id, {title, data})`, `deleteSet(id)`; title 1–80 characters, data ≤ 64 KiB, ≤ 50 sets per account. `createRoom({game_id, set_id})` plays a room with one of the account's sets.
 
+Images for image fields (engine 0.8+, same account token):
+
+| Method | Route | Result |
+| --- | --- | --- |
+| `uploadMedia(file, {contentType?})` | `POST /api/v1/accounts/media` | `file`: `Blob`, `ArrayBuffer` or `Uint8Array`, sent as the raw body (no multipart, no JSON) with `contentType` or the Blob's type. → `{media, used_bytes, limit_bytes}`. |
+| `listMedia()` | `GET /api/v1/accounts/media` | `{media: MediaItem[], used_bytes, limit_bytes}`, newest first. |
+| `deleteMedia(id)` | `DELETE /api/v1/accounts/media/{id}` | `null`. 409 `media_in_use` while a set of the account uses it. |
+
+`MediaItem` = `{id, url, content_type, width, height, size, created_at}`. `url` (`/media/<id>`) is the value for the image field and a public, same-origin `<img src>`. Limits: `manifest-and-settings.md`, "Image fields".
+
 ## Errors
 
-Every failure is a `MiniEngineError` with `.code` (and `.status` for HTTP). Codes you will meet: `host_offline`, `version_conflict`, `players_not_ready`, `invalid_transition`, `room_started`, `state_too_large`, `rate_limit` (60 commands/s for players and displays, 240 for the host; realtime has its own budget), `not_connected`, `request_timeout`, `disconnected`, `forbidden`, `invalid_request`. Since 0.5 also `not_eligible`, `achievement_unknown`, `game_not_running`, `player_not_found` (awards) and `set_not_found`, `quota_sets`, `set_too_large`, `release_changed` (sets). Terminal `closed` reasons: `session_revoked`, `room_deleted`, `room_expired` (12 h idle), `session_replaced` (same seat opened elsewhere).
+Every failure is a `MiniEngineError` with `.code` (and `.status` for HTTP). Codes you will meet: `host_offline`, `version_conflict`, `players_not_ready`, `invalid_transition`, `room_started`, `state_too_large`, `rate_limit` (60 commands/s for players and displays, 240 for the host; realtime has its own budget), `not_connected`, `request_timeout`, `disconnected`, `forbidden`, `invalid_request`. Since 0.5 also `not_eligible`, `achievement_unknown`, `game_not_running`, `player_not_found` (awards) and `set_not_found`, `quota_sets`, `set_too_large`, `release_changed` (sets). Since 0.8 `media_too_large`, `media_unsupported`, `media_invalid`, `quota_media`, `media_in_use`, `media_not_found` (images) and `quota_set_media` (a set with too many or too large images). Terminal `closed` reasons: `session_revoked`, `room_deleted`, `room_expired` (12 h idle), `session_replaced` (same seat opened elsewhere).
 
 ## Types in plain JavaScript
 

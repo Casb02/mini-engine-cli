@@ -103,10 +103,10 @@ export default {
       set_kinds: [
         {
           id: 'questions',
-          title: nl ? 'Eigen vragen' : 'Own questions',
+          title: nl ? 'Vragenlijst' : 'Question list',
           description: nl
-            ? 'Eén vraag per regel: de vraag, het goede antwoord en daarna de foute, gescheiden door |.'
-            : 'One question per line: the question, the right answer, then the wrong ones, separated by |.',
+            ? 'Per vraag: de vraag, het goede antwoord en daarna de foute, gescheiden door |. Een afbeelding mag erbij.'
+            : 'Per question: the question, the right answer, then the wrong ones, separated by |. A picture is optional.',
           schema: {
             type: 'object',
             additionalProperties: false,
@@ -118,7 +118,16 @@ export default {
                 description: nl ? 'Bijvoorbeeld: Hoeveel poten heeft een spin? | Acht | Zes | Tien' : 'For example: How many legs does a spider have? | Eight | Six | Ten',
                 minItems: 3,
                 maxItems: 100,
-                items: { type: 'string', title: nl ? 'Vraag' : 'Question', minLength: 5, maxLength: 300 },
+                items: {
+                  type: 'object',
+                  title: nl ? 'Vraag' : 'Question',
+                  additionalProperties: false,
+                  required: ['question'],
+                  properties: {
+                    question: { type: 'string', title: nl ? 'Vraag en antwoorden' : 'Question and answers', minLength: 5, maxLength: 300 },
+                    image: { type: 'string', format: 'image', title: nl ? 'Afbeelding' : 'Picture', description: nl ? 'Optioneel; staat bij de vraag.' : 'Optional; shown with the question.' },
+                  },
+                },
               },
             },
           },
@@ -126,16 +135,20 @@ export default {
       ],
     };
   },
-  data: o => ({ questions: questions[o.language] }),
+  data: o => ({ questions: questions[o.language].map(question => ({ question })) }),
   stage: (o, x) => `
 <p id="progress" class="me-label"></p>
 <h1 id="question" class="me-title">${x.headline}</h1>
+<img id="picture" class="quiz-picture" alt="" hidden>
 <p id="status" class="me-status" role="status">${x.connecting}</p>
 <div id="answers" class="me-choices" hidden></div>
 <p id="rules" class="me-muted"></p>
 <ol id="scores" class="me-scores" aria-label="${x.standings}" hidden></ol>
 `,
-  css: `.me-choice[aria-pressed="true"]:disabled, .me-choice.is-correct, .me-choice.is-wrong { opacity: 1; }
+  css: `.quiz-picture { display: block; max-width: 100%; max-height: 35vh; object-fit: contain; margin: 0 auto; border-radius: 12px; }
+.quiz-picture[hidden] { display: none; }
+body[data-view="screen"] .quiz-picture { max-height: 50vh; }
+.me-choice[aria-pressed="true"]:disabled, .me-choice.is-correct, .me-choice.is-wrong { opacity: 1; }
 .me-choices .me-choice.is-correct { border: 3px solid var(--me-good); }
 .me-choices .me-choice.is-wrong { border: 3px solid var(--me-bad); }
 body[data-view="screen"] .me-choice:disabled { opacity: 1; }
@@ -148,8 +161,9 @@ body[data-view="screen"] .me-choice { font-size: 1.6em; }
       manifestExtra: ', de soort eigen set (`set_kinds`) en een achievement',
       files: [['`data.json`', 'De vragen van het spel; alleen de host leest ze']],
       customize: [
-        '- Eigen vragen: één per regel in `data.json`, als `vraag | goed antwoord | fout | fout`. Twee tot zes antwoorden; de host schudt ze.',
-        '- Spelers maken een eigen vragenlijst op `/home/sets` van de server, in hetzelfde formaat. Lokaal proberen: `me dev --set mijn-vragen.json`.',
+        '- Eigen vragen: in `data.json` als `{ "question": "vraag | goed antwoord | fout | fout" }`. Twee tot zes antwoorden; de host schudt ze.',
+        '- Een plaatje bij een vraag: zet het in `assets/` en schrijf `"image": "assets/vragen/1.png"` erbij.',
+        '- Spelers maken een eigen vragenlijst op `/home/sets` van de server, in hetzelfde formaat en met eigen afbeeldingen (Mini Engine 0.8+). Lokaal proberen: `me dev --set sets/mijn-vragen.json`, met afbeeldingen in `sets/media/` als `"image": "/media/kat.jpg"`.',
         '- Aantal vragen en seconden per vraag kies je bij het maken van de kamer (`settings_schema` in `manifest.json`).',
         '- De regels staan in `assets/logic.js`, de scheidsrechter met de klok in `assets/app.js`.',
         '- Met *Iedereen doet mee* heeft het tabblad van de maker de antwoorden in het geheugen. Kies *TV* voor een eerlijke quiz.',
@@ -160,8 +174,9 @@ body[data-view="screen"] .me-choice { font-size: 1.6em; }
       manifestExtra: ', the kind of own set (`set_kinds`) and an achievement',
       files: [['`data.json`', 'The game’s questions; only the host reads them']],
       customize: [
-        '- Your own questions: one per line in `data.json`, as `question | right answer | wrong | wrong`. Two to six answers; the host shuffles them.',
-        '- Players make their own question list at `/home/sets` on the server, in the same format. Try one locally: `me dev --set my-questions.json`.',
+        '- Your own questions: in `data.json` as `{ "question": "question | right answer | wrong | wrong" }`. Two to six answers; the host shuffles them.',
+        '- A picture with a question: put it in `assets/` and add `"image": "assets/questions/1.png"`.',
+        '- Players make their own question list at `/home/sets` on the server, in the same format and with their own pictures (Mini Engine 0.8+). Try one locally: `me dev --set sets/my-questions.json`, with pictures in `sets/media/` as `"image": "/media/cat.jpg"`.',
         '- The number of questions and seconds per question are picked when the room is created (`settings_schema` in `manifest.json`).',
         '- The rules are in `assets/logic.js`, the referee with the clock in `assets/app.js`.',
         '- With *Iedereen doet mee* the creator’s tab holds the answers in memory. Pick *TV* for a fair quiz.',

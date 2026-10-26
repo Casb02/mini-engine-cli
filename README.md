@@ -63,7 +63,7 @@ me game upload --activate
 | Sjabloon | Wat | Laat zien |
 | --- | --- | --- |
 | `stemmen` | Iedereen stemt ja of nee op één vraag; elk scherm toont de stand. | De wachtrij van de host, een host die meespeelt, een gedeeld scherm |
-| `quiz` | Meerkeuzevragen op tijd, punten en een eindstand. | Geheime antwoorden in `host_state`, `data.json`, eigen sets (één vraag per regel), een achievement |
+| `quiz` | Meerkeuzevragen op tijd, punten en een eindstand. | Geheime antwoorden in `host_state`, `data.json`, eigen sets (een vragenlijst, met een plaatje per vraag als je wilt), een achievement |
 | `buzzer` | Wie drukt het snelst na het signaal? | `client.realtime` met de `ts` van de server; de host beslist eerlijk |
 | `beurten` | Om de beurt dobbelen; een 1 kost je de punten van die beurt. | Beurten, spelers die weggaan, overslaan na 30 seconden offline |
 | `leeg` | Een kaal begin: lobby, start, één voorbeeldzet en een einde. | Het kleinste rondje van actie naar host naar state |

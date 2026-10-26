@@ -116,6 +116,22 @@ var ApiClient = class {
   deleteSet(id) {
     return this.call(this.setPath(id), { method: "DELETE", token: this.accountToken });
   }
+  /**
+   * Stores an image on the account (PNG, JPEG, WebP or GIF, at most 10 MiB) and returns its `url` for an image field.
+   * The body is the raw bytes; the Content-Type is `contentType`, else the Blob's own type. The server detects the format itself.
+   */
+  uploadMedia(file, { contentType } = {}) {
+    const type = contentType || (file instanceof Blob ? file.type : "") || "application/octet-stream";
+    return this.call("/accounts/media", { method: "POST", token: this.accountToken, headers: { "Content-Type": type }, body: file });
+  }
+  /** The account's images, newest first, with the bytes used and the quota. */
+  listMedia() {
+    return this.call("/accounts/media", { token: this.accountToken });
+  }
+  /** Deletes an image; 409 `media_in_use` while one of the account's sets uses it. */
+  deleteMedia(id) {
+    return this.call(`/accounts/media/${encodeURIComponent(id)}`, { method: "DELETE", token: this.accountToken });
+  }
   async logout() {
     const result = await this.call("/accounts/logout", { method: "POST", token: this.accountToken });
     this.accountToken = void 0;

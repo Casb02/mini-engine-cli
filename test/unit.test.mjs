@@ -8,6 +8,7 @@ import { checkManifest, collectFiles, compileIgnore, isIgnored, packGame, parseI
 import { selectPrune } from '../src/prune.mjs';
 import { Readable } from 'node:stream';
 import { createApp, isLoopback } from '../src/dev/http.mjs';
+import { loadPackage } from '../src/dev/package.mjs';
 import { dataImageProblems, hasImageFields, validateSetData, validateSetSchema } from '../src/dev/schema.mjs';
 import { scaffoldGame } from '../src/scaffold.mjs';
 import { tempHome } from './helpers/run.mjs';
@@ -347,6 +348,13 @@ describe('images in set schemas', () => {
     }
     assert.deepEqual(dataImageProblems([{ id: 'bord', schema: board() }], { iets: 'anders' }, has), [], 'a data.json that is no set is left alone');
     assert.deepEqual(dataImageProblems([{ id: 'bord', schema: board() }], null, has), []);
+  });
+
+  test('the quiz template has pictures in its set and passes the engine rules', async () => {
+    const { directory } = await scaffoldGame('plaatjesquiz', join(home, 'plaatjesquiz'), { template: 'quiz' });
+    const pkg = await loadPackage(directory);
+    assert.equal(hasImageFields(pkg.metadata.set_kinds[0].schema), true);
+    assert.deepEqual(pkg.warnings, []);
   });
 });
 

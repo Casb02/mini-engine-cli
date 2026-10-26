@@ -20,7 +20,7 @@ cd <game directory>
 me dev                          # --players 4, --set sets/test.json, --port 3170, --no-open
 ```
 
-It checks `manifest.json` like `me game upload`, then opens one page with the host, the display and every player side by side; each seat runs on its own port, so each has its own session like a separate phone. Saving a file reloads the seats and keeps the room. Rooms, ready, state versions, actions, realtime, achievements (every player counts as logged in; awards appear in the terminal) and game data (`--set` swaps in a set file, validated against `set_kinds`) work as on the server. Everything lives in memory; it listens on 127.0.0.1 only.
+It checks `manifest.json` like `me game upload`, then opens one page with the host, the display and every player side by side; each seat runs on its own port, so each has its own session like a separate phone. Saving a file reloads the seats and keeps the room. Rooms, ready, state versions, actions, realtime, achievements (every player counts as logged in; awards appear in the terminal) and game data (`--set` swaps in a set file, validated against `set_kinds`) work as on the server. Image fields (CLI 0.8+): in the set file write `/media/<name>` for a file in a `media/` folder next to it (`sets/media/kat.jpg` → `"/media/kat.jpg"`); `me dev` serves it at that URL. `assets/…` paths in `data.json` work as on the server. Everything lives in memory; it listens on 127.0.0.1 only.
 
 A package error (such as `Invalid manifest for <id>: …`, `Unsupported settings schema feature: pattern`, `A required game role HTML file is missing.`, `Invalid runtime or unsupported host modes.`, or a Dutch `manifest.json: …` message from the CLI's own checks) shows in the overview and the terminal; fix and save. `curl -s http://127.0.0.1:3170/api/v1/games/<id>` shows the manifest as the server reads it.
 
@@ -122,3 +122,6 @@ curl -s -H "Authorization: Bearer $DISPLAY_TOKEN" http://127.0.0.1:3170/api/v1/r
 | `manifest.json: icon …` (CLI) or `Invalid icon: …` (server) | The `icon` path or file breaks a rule in `manifest-and-settings.md` (path under `assets/`, `.svg`, ≤ 64 KiB, no scripts or event attributes). |
 | `award` fails with `achievement_unknown` | The id is not in the release this room started with: check `manifest.json`, upload and activate, then create a new room. |
 | `gameData` returns another shape than `data.json` | The room plays with a player's own set (`room.set`); give `data.json` the shape of the set kind. |
+| An image from `data.json` 404s | `assets/…` resolved against the page URL (`/api/v1/games/…`). Resolve it from a module in `assets/` with `new URL(value.slice('assets/'.length), import.meta.url)` (host-runtime-patterns §13). |
+| A set kind with `"format": "image"` is refused by `me dev` or the upload | The CLI or the server is older than 0.8; image fields need both at 0.8+. |
+| Saving a set fails with `quota_set_media` / an upload with `quota_media`, `media_too_large`, `media_unsupported` | Limits in `manifest-and-settings.md`, "Image fields". The set editor shows the Dutch message at the field. |

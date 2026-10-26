@@ -1,6 +1,6 @@
 # Host-runtime patterns
 
-The scaffold's `assets/room.js` holds the queue (`enqueue`), `run`, the ready/start flow and the player list; `assets/app.js` holds the game. The starter templates are worked examples of these recipes: `quiz` (secrets in `host_state` and `player_states`, timers, own sets, an achievement), `buzzer` (§9) and `beurten` (turns, players leaving, §12). These recipes extend them. Code is plain JavaScript with JSDoc types, checked by the game's `jsconfig.json`.
+The scaffold's `assets/room.js` holds the queue (`enqueue`), `run`, the ready/start flow and the player list; `assets/app.js` holds the game. The starter templates are worked examples of these recipes: `quiz` (secrets in `host_state` and `player_states`, timers, own sets with an optional picture per question (§13), an achievement), `buzzer` (§9) and `beurten` (turns, players leaving, §12). These recipes extend them. Code is plain JavaScript with JSDoc types, checked by the game's `jsconfig.json`.
 
 ## 1. Model state in three layers plus a phase
 
@@ -394,3 +394,27 @@ async function keepScreenOn() {
 client.on('snapshot', keepScreenOn);
 document.addEventListener('visibilitychange', keepScreenOn);
 ```
+
+## 13. Own sets with pictures (engine 0.8+)
+
+An image field (`{"type": "string", "format": "image"}`, rules in `manifest-and-settings.md`) arrives in `gameData` as a string: `/media/<id>` from a player's set, `assets/…` from the game's own `data.json`. The host checks it once, like all loaded data, and publishes it in `public_state` when the question is shown; every page draws it with a plain `<img src>`. `/media/…` is on the engine's origin, so the CSP (`img-src 'self'`) allows it.
+
+```js
+// assets/logic.js: keep only values the engine can hand out.
+/** @param {unknown} value @returns {string | null} */
+export const imageOf = value => typeof value === 'string' && /^(?!.*\.\.)(?:\/media\/[\w.-]+|assets\/[\w./-]+)$/.test(value) ? value : null;
+
+// assets/app.js: `assets/…` is a package path; resolve it from this module (which lives in assets/), like your relative imports.
+/** @param {string} value */
+const imageSrc = value => value.startsWith('assets/') ? new URL(value.slice('assets/'.length), import.meta.url).href : value;
+const picture = /** @type {HTMLImageElement} */ ($('picture'));
+picture.hidden = !quiz.image;
+if (quiz.image && picture.getAttribute('src') !== imageSrc(quiz.image)) picture.src = imageSrc(quiz.image);
+```
+
+- Put `<img id="picture" alt="" hidden>` in the pages and give it a box: `max-width: 100%; max-height: 40vh; object-fit: contain;` (larger on the display). Images are up to 1920 px and 1 MiB, so a phone needs a moment: never wait for the load before allowing an answer.
+- An optional field may be absent (`imageOf` gives `null`): show the question without a picture, never an empty or broken image.
+- Set `src` only when it changes, or every snapshot restarts the load.
+- A picture that gives the answer away belongs in `public_state` only once it may be seen. The URL itself is public (unguessable for `/media/…`, a known path for `assets/…`).
+- Test locally with `me dev --set sets/test.json` and the images in `sets/media/`, referenced as `/media/<file name>`.
+
