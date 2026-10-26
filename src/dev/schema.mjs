@@ -173,7 +173,7 @@ function checkSchema(schema, depth, nodes, path) {
   const extra = {
     object: ['properties', 'required', 'additionalProperties'],
     array: ['items', 'minItems', 'maxItems'],
-    string: ['minLength', 'maxLength', 'enum'],
+    string: ['minLength', 'maxLength', 'enum', 'format'],
     integer: ['minimum', 'maximum'],
     number: ['minimum', 'maximum'],
     boolean: [],
@@ -191,6 +191,12 @@ function checkSchema(schema, depth, nodes, path) {
     return checkSchema(schema.items, depth + 1, nodes, `${path}.items`);
   }
   if (kind === 'string') {
+    if ('format' in schema) {
+      if (schema.format !== 'image') throw at(path, 'format kan alleen "image" zijn.');
+      const extra = ['minLength', 'maxLength', 'enum'].find(key => key in schema);
+      if (extra !== undefined) throw at(path, `${extra} kan niet samen met format "image".`);
+      return;
+    }
     countBounds(schema, 'minLength', 'maxLength', path);
     if ('enum' in schema) {
       const choices = schema.enum;
@@ -259,7 +265,18 @@ function checkLength(schema, text, path) {
   }
 }
 
-export function validateSetData(schema, value, path = '') {
+// An image field holds a URL. In an account set that is /media/<id> of the account's own upload.
+export const MEDIA_URL = /^\/media\/[0-9a-f]{32}$/;
+export const noImage = (value, path) => {
+  if (value === '') throw at(path, 'kies een afbeelding.');
+};
+const accountImage = (value, path) => {
+  noImage(value, path);
+  if (!MEDIA_URL.test(value)) throw at(path, 'verwacht een afbeelding: /media/ met het id van een eigen upload.');
+};
+
+/** `image(value, path)` checks the value of every image field; the default is the rule for account sets. */
+export function validateSetData(schema, value, path = '', image = accountImage) {
   const wrong = expected => at(label(path), `verwacht ${expected}.`);
   const kind = typeof schema?.type === 'string' ? schema.type : '';
   if (kind === 'object') {
@@ -271,7 +288,7 @@ export function validateSetData(schema, value, path = '') {
     for (const name of sortedKeys(value)) {
       const rule = isObject(schema.properties) && Object.hasOwn(schema.properties, name) ? schema.properties[name] : undefined;
       if (rule === undefined) throw at(child(name), 'dit veld is niet toegestaan.');
-      validateSetData(rule, value[name], child(name));
+      validateSetData(rule, value[name], child(name), image);
     }
     return;
   }
@@ -282,11 +299,12 @@ export function validateSetData(schema, value, path = '') {
     if ((low !== undefined && value.length < low) || (high !== undefined && value.length > high)) {
       throw at(label(path), `gebruik ${range(low, high, 'items')}.`);
     }
-    value.forEach((item, index) => validateSetData(schema.items, item, `${path}[${index}]`));
+    value.forEach((item, index) => validateSetData(schema.items, item, `${path}[${index}]`, image));
     return;
   }
   if (kind === 'string') {
-    if (typeof value !== 'string') throw wrong('tekst');
+    if (typeof value !== 'string') throw wrong(schema.format === 'image' ? 'een afbeelding' : 'tekst');
+    if (schema.format === 'image') return image(value, label(path));
     checkLength(schema, value, path);
     if (Array.isArray(schema.enum) && !schema.enum.includes(value)) throw at(label(path), 'kies een van de toegestane waarden.');
     return;
@@ -311,9 +329,39 @@ export function validateSetData(schema, value, path = '') {
   throw bad('Ongeldig set-schema.');
 }
 
-export function validateSetContent(metadata, kind, data) {
+export function validateSetContent(metadata, kind, data, image) {
   const declared = metadata.set_kinds.find(item => item.id === kind);
   if (!declared) throw bad('Dit spel kent deze soort set niet.');
   if (jsonBytes(data) > MAX_SET_BYTES) throw new EngineError(413, 'set_too_large', 'Een set mag maximaal 64 KiB zijn.');
-  validateSetData(declared.schema, data);
+  validateSetData(declared.schema, data, '', image);
+}
+
+/** Whether a set schema has an image field (format "image") anywhere. */
+export const hasImageFields = schema =>
+  isObject(schema) && (schema.format === 'image' || (isObject(schema.properties) && Object.values(schema.properties).some(hasImageFields)) || hasImageFields(schema.items));
+
+/** An image in a game's own data.json is a file in the package: a relative path under assets/ without `..`. */
+export const isPackagePath = value =>
+  value.startsWith('assets/') && !value.includes('\\') && value.split('/').every(part => part !== '' && part !== '.' && part !== '..');
+
+/**
+ * Problems with the image fields of data.json, for the set kinds whose shape it has. data.json need not be a set,
+ * so a data.json that fits no set kind has none.
+ */
+export function dataImageProblems(setKinds, data, hasFile) {
+  if (data === null || data === undefined) return [];
+  for (const kind of setKinds) {
+    try {
+      validateSetData(kind.schema, data, '', () => {});
+    } catch {
+      continue;
+    }
+    const problems = [];
+    validateSetData(kind.schema, data, '', (value, path) => {
+      if (!isPackagePath(value)) problems.push(`${path}: gebruik een pad naar een bestand in de game, zoals assets/plaatje.png.`);
+      else if (!hasFile(value)) problems.push(`${path}: ${value} staat niet in de game.`);
+    });
+    return problems;
+  }
+  return [];
 }
