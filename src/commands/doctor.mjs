@@ -4,6 +4,7 @@ import { enc, request } from '../api.mjs';
 import { homeDir } from '../config.mjs';
 import { CliError } from '../errors.mjs';
 import { formatBytes, maskToken, tildePath } from '../format.mjs';
+import { dataImageProblems } from '../dev/schema.mjs';
 import { packGame } from '../pack.mjs';
 import { skillStatus } from '../skills.mjs';
 import { PACKAGE } from '../vendor.mjs';
@@ -34,7 +35,7 @@ async function latestVersion(env) {
   }
 }
 
-/** The role pages must load their scripts and styles from /games/<id>/assets/ of this game, and those files must be there. */
+/** The role pages must load their scripts and styles from /games/<id>/assets/ of this game, and those files must be there; so must the pictures in data.json. */
 function assetProblems(pack, contents) {
   const problems = [];
   for (const page of ['host.html', 'player.html', 'display.html']) {
@@ -47,7 +48,20 @@ function assetProblems(pack, contents) {
       else if (!pack.files.some(file => file.path === path)) problems.push({ text: `${page} laadt ${url}, maar ${path} staat niet in het spel.`, fix: 'Zet het bestand op die plek, of haal de verwijzing weg (kijk ook in .meignore).' });
     }
   }
-  return problems;
+  return problems.concat(imageProblems(pack));
+}
+
+/** Default pictures in data.json are files in the game, like assets/vragen/1.png. */
+function imageProblems(pack) {
+  if (!pack.encoded['data.json'] || !Array.isArray(pack.manifest.set_kinds)) return [];
+  let data;
+  try {
+    data = JSON.parse(Buffer.from(pack.encoded['data.json'], 'base64').toString('utf8'));
+  } catch {
+    return [];
+  }
+  const fix = 'Zet de afbeelding in assets/ en gebruik dat pad, bijvoorbeeld assets/plaatje.png (kijk ook in .meignore).';
+  return dataImageProblems(pack.manifest.set_kinds, data, path => Object.hasOwn(pack.encoded, path)).map(text => ({ text: `data.json: ${text}`, fix }));
 }
 
 async function gameChecks(ctx, dir, reach) {

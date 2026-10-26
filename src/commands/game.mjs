@@ -2,6 +2,7 @@ import { relative, resolve } from 'node:path';
 import { enc, request } from '../api.mjs';
 import { CliError, usageError } from '../errors.mjs';
 import { formatBytes, formatDate, gameStatus, table } from '../format.mjs';
+import { hasImageFields } from '../dev/schema.mjs';
 import { declared, packGame } from '../pack.mjs';
 import { newestFirst, selectPrune } from '../prune.mjs';
 import { gameOptionFlags, gameOptionsFromFlags } from '../options.mjs';
@@ -134,6 +135,7 @@ export const gameCommands = [
       '',
       'De velden achievements en set_kinds in manifest.json worden vooraf gecontroleerd en in het overzicht getoond.',
       'Ze werken vanaf Mini Engine 0.5; bij een oudere server krijg je eerst een waarschuwing.',
+      'Afbeeldingen in sets ({"type": "string", "format": "image"}) werken vanaf Mini Engine 0.8; ook daarvoor waarschuwt de CLI.',
     ].join('\n'),
     options: { activate: { type: 'boolean' }, 'dry-run': { type: 'boolean' } },
     optionHelp: [
@@ -165,6 +167,9 @@ export const gameCommands = [
       const warnings = [];
       if (used.length && beforeHome) {
         warnings.push(`Let op: ${server} draait Mini Engine ${engineVersion}, die ${used.join(' en ')} in manifest.json negeert. Die werken pas vanaf Mini Engine 0.5.`);
+      }
+      if (olderThan(engineVersion, 0, 8) && (pack.manifest.set_kinds ?? []).some(kind => hasImageFields(kind.schema))) {
+        warnings.push(`Let op: ${server} draait Mini Engine ${engineVersion}. Afbeeldingen in sets (format "image") werken pas vanaf Mini Engine 0.8; deze server weigert dit schema.`);
       }
       if (!ctx.json) warnings.forEach(warning => ctx.warn(warning));
       const body = { files: pack.encoded };
