@@ -178,14 +178,14 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
       }
       if (method === 'PUT' && (m = /^\/api\/v1\/admin\/accounts\/([^/]+)\/admin$/.exec(path))) {
         const account = findAccount(m[1]);
-        if (typeof body?.admin !== 'boolean') fail(400, 'bad_request', 'admin moet true of false zijn.');
+        if (typeof body?.admin !== 'boolean') fail(400, 'invalid_request', 'admin moet true of false zijn.');
         account.admin = body.admin;
         return [200, accountView(account)];
       }
       if (method === 'PUT' && (m = /^\/api\/v1\/admin\/accounts\/([^/]+)\/game-limit$/.exec(path))) {
         const account = findAccount(m[1]);
         const limit = body?.game_limit;
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) fail(400, 'bad_request', 'De gamelimiet is een heel getal van 1 tot 100.');
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) fail(400, 'invalid_request', 'De gamelimiet is een heel getal van 1 tot 100.');
         account.game_limit = limit;
         return [200, accountView(account)];
       }
