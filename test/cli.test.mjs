@@ -632,7 +632,7 @@ describe('admin', () => {
     assert.equal(set.code, 0, set.stderr);
     assert.match(set.stdout, /@sander mag nu 25 games uploaden \(heeft er 1\)\./);
     assert.deepEqual(fake.state.requests.at(-1).body, { game_limit: 25 });
-    assert.match((await admin(['admin', 'accounts'])).stdout, /sander\s+Sander\s+–\s+1 van 25\s+–/);
+    assert.match((await admin(['admin', 'accounts'])).stdout, /sander\s+Sander\s+–\s+1 van 25\s+0 van 250 MB\s+–/);
     for (const bad of ['0', 'abc', '101', '2.5']) {
       const before = fake.state.requests.length;
       const result = await admin(['admin', 'account', 'limit', 'sander', bad]);
@@ -642,8 +642,78 @@ describe('admin', () => {
     }
   });
 
+  test('account media sets the space for images, or back to the role', async () => {
+    fake.state.accounts.get('sander').media_used = 12.3 * 1024 * 1024;
+    const set = await admin(['admin', 'account', 'media', 'sander', '500']);
+    assert.equal(set.code, 0, set.stderr);
+    assert.match(set.stdout, /@sander heeft nu 500 MB voor afbeeldingen \(gebruikt 12,3 MB\)\./);
+    assert.deepEqual(fake.state.requests.at(-1).body, { media_limit_mb: 500 });
+    assert.equal(fake.state.requests.at(-1).path, '/api/v1/admin/accounts/sander/media-limit');
+    assert.match((await admin(['admin', 'accounts'])).stdout, /sander\s+Sander\s+–\s+0 van 10\s+12,3 van 500 MB\s+–/);
+    const lower = await admin(['admin', 'account', 'media', 'sander', '0']);
+    assert.match(lower.stdout, /@sander heeft nu 0 MB voor afbeeldingen \(gebruikt 12,3 MB\)\. Wat er staat blijft staan; nieuwe uploads worden geweigerd\./);
+    const reset = await admin(['admin', 'account', 'media', 'sander', 'standaard', '--json']);
+    assert.equal(reset.code, 0, reset.stderr);
+    assert.deepEqual(fake.state.requests.at(-1).body, { media_limit_mb: null });
+    assert.equal(reset.json().media_limit_mb, 250);
+    assert.equal(reset.json().media_limit_custom, false);
+    assert.match((await admin(['admin', 'account', 'media', 'sander', 'Standaard'])).stdout, /@sander heeft weer de ruimte van de rol: 250 MB voor afbeeldingen \(gebruikt 12,3 MB\)\./);
+    for (const bad of ['1x', 'abc', '1048577', '2.5', '']) {
+      const before = fake.state.requests.length;
+      const result = await admin(['admin', 'account', 'media', 'sander', bad]);
+      assert.equal(result.code, 2, bad);
+      assert.match(result.stderr, /heel aantal MB van 0 tot 1048576 zijn, of "standaard"/);
+      assert.equal(fake.state.requests.length, before);
+    }
+  });
+
+  test('media requests: list, grant and reject', async () => {
+    const empty = await admin(['admin', 'media', 'requests']);
+    assert.equal(empty.code, 0, empty.stderr);
+    assert.match(empty.stdout, /Er zijn geen open aanvragen voor ruimte voor afbeeldingen\./);
+    fake.addAccount('joost');
+    fake.addAccount('anouk');
+    const first = fake.addMediaRequest('joost', 'Voor mijn pubquiz met foto\'s');
+    const second = fake.addMediaRequest('anouk');
+    const list = await admin(['admin', 'media', 'requests']);
+    assert.equal(list.code, 0, list.stderr);
+    assert.match(list.stdout, /^ID\s+GEBRUIKER\s+NAAM\s+AANGEVRAAGD\s+AFBEELDINGEN\s+BERICHT\n1\s+joost\s+Joost\s+\d{4}-\d\d-\d\d \d\d:\d\d\s+0 van 0 MB\s+Voor mijn pubquiz met foto's\n2\s+anouk\s+Anouk\s.*\s-\n\nKen toe/);
+    assert.match(list.stdout, /me admin media grant <id> <MB>/);
+    assert.deepEqual((await admin(['admin', 'media', 'requests', '--json'])).json().requests.map(r => r.username), ['joost', 'anouk']);
+
+    const grant = await admin(['admin', 'media', 'grant', String(first.id), '300']);
+    assert.equal(grant.code, 0, grant.stderr);
+    assert.match(grant.stdout, /Aanvraag 1 toegekend: @joost heeft nu 300 MB voor afbeeldingen\./);
+    assert.deepEqual(fake.state.requests.at(-1).body, { decision: 'grant', media_limit_mb: 300 });
+    assert.equal(fake.state.requests.at(-1).path, '/api/v1/admin/media-requests/1');
+
+    const reject = await admin(['admin', 'media', 'reject', String(second.id), '--json']);
+    assert.equal(reject.code, 0, reject.stderr);
+    assert.deepEqual(fake.state.requests.at(-1).body, { decision: 'reject' });
+    assert.equal(reject.json().request.status, 'rejected');
+    assert.equal(reject.json().account.username, 'anouk');
+
+    const again = await admin(['admin', 'media', 'reject', String(first.id)]);
+    assert.equal(again.code, 1);
+    assert.match(again.stderr, /Over deze aanvraag is al beslist\./);
+    const unknown = await admin(['admin', 'media', 'grant', '99', '10', '--json']);
+    assert.equal(unknown.json().error.code, 'media_request_not_found');
+    assert.match((await admin(['admin', 'media', 'requests'])).stdout, /geen open aanvragen/);
+
+    const third = fake.addMediaRequest('anouk', 'Nog een keer');
+    const rejected = await admin(['admin', 'media', 'reject', String(third.id)]);
+    assert.match(rejected.stdout, /Aanvraag 3 afgewezen\. @anouk houdt 0 MB voor afbeeldingen\./);
+
+    for (const args of [['grant', '1', '0'], ['grant', '1', 'standaard'], ['grant', '1', '1048577'], ['grant', 'abc', '10'], ['reject', 'x']]) {
+      const before = fake.state.requests.length;
+      const result = await admin(['admin', 'media', ...args]);
+      assert.equal(result.code, 2, args.join(' '));
+      assert.equal(fake.state.requests.length, before);
+    }
+  });
+
   test('account commands on an unknown user show the server message', async () => {
-    for (const args of [['promote', 'niemand'], ['demote', 'niemand'], ['limit', 'niemand', '5']]) {
+    for (const args of [['promote', 'niemand'], ['demote', 'niemand'], ['limit', 'niemand', '5'], ['media', 'niemand', '5']]) {
       const result = await admin(['admin', 'account', ...args]);
       assert.equal(result.code, 1);
       assert.match(result.stderr, /Er is geen account met deze gebruikersnaam\./);
@@ -656,7 +726,7 @@ describe('admin', () => {
     await admin(['admin', 'account', 'verify', 'joost']);
     const all = await admin(['admin', 'accounts']);
     assert.equal(all.code, 0, all.stderr);
-    assert.match(all.stdout, /^GEBRUIKER\s+NAAM\s+BEHEERDER\s+GAMES\s+E-MAIL\nanouk\s.*\njoost\s+Joost\s+–\s+0 van 10\s+bevestigd\nsander\s/);
+    assert.match(all.stdout, /^GEBRUIKER\s+NAAM\s+BEHEERDER\s+GAMES\s+AFBEELDINGEN\s+E-MAIL\nanouk\s.*\njoost\s+Joost\s+–\s+0 van 10\s+0 van 0 MB\s+bevestigd\nsander\s/);
     const search = await admin(['admin', 'accounts', 'OOS', '--json']);
     assert.deepEqual(search.json().accounts.map(a => a.username), ['joost']);
     assert.deepEqual(fake.state.requests.at(-1).query, { q: 'OOS' });
@@ -668,7 +738,7 @@ describe('admin', () => {
 
   test('account commands with a wrong admin token', async () => {
     const env = { MINIENGINE_ADMIN_TOKEN: 'w'.repeat(40) };
-    for (const args of [['accounts'], ['account', 'promote', 'sander'], ['account', 'limit', 'sander', '5']]) {
+    for (const args of [['accounts'], ['account', 'promote', 'sander'], ['account', 'limit', 'sander', '5'], ['account', 'media', 'sander', '5'], ['media', 'requests']]) {
       const result = await me(['admin', ...args], { env });
       assert.equal(result.code, 1);
       assert.match(result.stderr, /Het admintoken klopt niet\. Log opnieuw in met: me admin login/);

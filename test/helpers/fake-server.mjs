@@ -28,10 +28,10 @@ function contentHash(files) {
 export async function startFakeServer({ adminToken = 'admin-token-0123456789abcdef0123456789', builtins = ['common-dice'], quotaGames = 10, quotaReleases = 10, version = '0.5.0' } = {}) {
   let clock = 1_760_000_000;
   const tick = () => (clock += 1);
-  const state = { accounts: new Map(), tokens: [], games: new Map(), requests: [], adminToken, version };
+  const state = { accounts: new Map(), tokens: [], games: new Map(), mediaRequests: [], requests: [], adminToken, version };
 
   const addAccount = username => {
-    const account = { id: randomUUID(), username, display_name: username[0].toUpperCase() + username.slice(1), admin: false, email_verified: false, created_at: clock, game_limit: quotaGames };
+    const account = { id: randomUUID(), username, display_name: username[0].toUpperCase() + username.slice(1), admin: false, email_verified: false, created_at: clock, game_limit: quotaGames, media_used: 0, media_limit: null };
     state.accounts.set(username, account);
     return account;
   };
@@ -39,6 +39,13 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     const token = { id: randomUUID(), token: `med_${randomBytes(32).toString('hex')}`, username, label, created_at: tick(), expires_at, last_used_at: null, revoked_at: null };
     state.tokens.unshift(token);
     return token;
+  };
+
+  const addMediaRequest = (username, message = '') => {
+    const request = { id: state.mediaRequests.length + 1, username, message, requested_at: tick(), status: 'pending', decided_at: null, granted_mb: null };
+    for (const open of state.mediaRequests) if (open.username === username && open.status === 'pending') open.status = 'replaced';
+    state.mediaRequests.push(request);
+    return request;
   };
 
   const release = (game, r) => ({
@@ -67,6 +74,9 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
   };
 
   const ownedGames = username => [...state.games.values()].filter(g => g.owner === username).length;
+  const workingKeys = username => state.tokens.filter(t => t.username === username && !t.revoked_at && !(t.expires_at && t.expires_at < clock)).length;
+  // Without a choice of an admin, the role decides: 1 GiB for an admin, 250 MiB with a working dev key, else nothing.
+  const mediaLimit = account => account.media_limit ?? (account.admin ? 1024 : workingKeys(account.username) ? 250 : 0);
   const accountView = account => ({
     username: account.username,
     display_name: account.display_name,
@@ -75,7 +85,18 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     created_at: account.created_at,
     games: ownedGames(account.username),
     game_limit: account.game_limit,
+    dev_keys: workingKeys(account.username),
+    media_used: account.media_used,
+    media_limit_mb: mediaLimit(account),
+    media_limit_custom: account.media_limit !== null,
   });
+  const requestView = r => ({ id: r.id, status: r.status, message: r.message, requested_at: r.requested_at, decided_at: r.decided_at, granted_mb: r.granted_mb });
+  const MAX_MEDIA_MB = 1048576;
+  const grantOpen = (account, mb) => {
+    for (const r of state.mediaRequests) {
+      if (r.username === account.username && r.status === 'pending') Object.assign(r, { status: 'granted', decided_at: tick(), granted_mb: mb });
+    }
+  };
   const findAccount = raw => {
     const account = state.accounts.get(decodeURIComponent(raw).trim().toLowerCase());
     if (!account) fail(404, 'account_not_found', 'Er is geen account met deze gebruikersnaam.');
@@ -189,6 +210,38 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
         account.game_limit = limit;
         return [200, accountView(account)];
       }
+      if (method === 'PUT' && (m = /^\/api\/v1\/admin\/accounts\/([^/]+)\/media-limit$/.exec(path))) {
+        const account = findAccount(m[1]);
+        const mb = body?.media_limit_mb;
+        if (mb !== null && (!Number.isInteger(mb) || mb < 0 || mb > MAX_MEDIA_MB)) fail(400, 'invalid_request', 'De ruimte is een heel aantal MB van 0 tot 1048576, of null.');
+        account.media_limit = mb;
+        if (mb > 0) grantOpen(account, mb);
+        return [200, accountView(account)];
+      }
+      if (method === 'GET' && path === '/api/v1/admin/media-requests') {
+        const requests = state.mediaRequests
+          .filter(r => r.status === 'pending')
+          .map(r => {
+            const account = state.accounts.get(r.username);
+            return { id: r.id, username: r.username, display_name: account.display_name, message: r.message, requested_at: r.requested_at, media_used: account.media_used, media_limit_mb: mediaLimit(account) };
+          });
+        return [200, { requests }];
+      }
+      if (method === 'POST' && (m = /^\/api\/v1\/admin\/media-requests\/([^/]+)$/.exec(path))) {
+        const decision = body?.decision;
+        const mb = body?.media_limit_mb;
+        if (decision === 'grant' && !(Number.isInteger(mb) && mb >= 1 && mb <= MAX_MEDIA_MB)) fail(400, 'invalid_request', 'Kies hoeveel ruimte je geeft: een heel aantal MB van 1 tot 1048576.');
+        if (!(decision === 'grant' || (decision === 'reject' && mb === undefined))) fail(400, 'invalid_request', 'decision is grant met media_limit_mb, of reject.');
+        const request = state.mediaRequests.find(r => String(r.id) === decodeURIComponent(m[1]));
+        if (!request || request.status === 'replaced') fail(404, 'media_request_not_found', 'Deze aanvraag voor ruimte bestaat niet.');
+        if (request.status !== 'pending') fail(409, 'media_request_decided', 'Over deze aanvraag is al beslist.');
+        const account = state.accounts.get(request.username);
+        if (decision === 'grant') {
+          account.media_limit = mb;
+          grantOpen(account, mb);
+        } else Object.assign(request, { status: 'rejected', decided_at: tick() });
+        return [200, { request: requestView(request), account: accountView(account) }];
+      }
       if (method === 'GET' && path === '/api/v1/admin/games') return [200, { games: [...state.games.values()].map(adminView) }];
       if (method === 'PUT' && (m = /^\/api\/v1\/admin\/games\/([^/]+)$/.exec(path))) {
         const game = state.games.get(decodeURIComponent(m[1]));
@@ -283,6 +336,7 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     url,
     state,
     addAccount,
+    addMediaRequest,
     issueToken,
     game: id => state.games.get(id),
     setInUse(id, version, value = true) {

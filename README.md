@@ -9,7 +9,7 @@ Met de Mini Engine CLI maak, test en publiceer je je eigen partygames voor Mini 
 
 Documentatie: [docs.miniengine.nl](https://docs.miniengine.nl/publiceren/cli.html). De routes die de CLI gebruikt, staan bij [API: ontwikkelaars](https://docs.miniengine.nl/api/ontwikkelaars.html).
 
-De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig, afbeeldingen in eigen sets Mini Engine 0.8.
+De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig, afbeeldingen in eigen sets Mini Engine 0.8, en de ruimte voor afbeeldingen per account beheren Mini Engine 0.8.1.
 
 ## Installeren
 
@@ -137,7 +137,7 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 
 ```
 ✓ Node.js 22.12.0
-✓ CLI 0.8.0 is de nieuwste versie
+✓ CLI 0.8.1 is de nieuwste versie
 ✓ Server https://miniengine.nl (standaard) is bereikbaar, Mini Engine 0.6.1
 ✗ Geen dev key voor https://miniengine.nl; uploaden kan nog niet. Spelen met me dev lukt wel.
     Vraag een dev key aan wie de server beheert en log in met: me auth
@@ -148,6 +148,20 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 ```
 
 In een map met `manifest.json` doet doctor dezelfde controles als `me game upload --dry-run`, en kijkt hij of de pagina's alleen bestanden uit het spel laden en of de afbeeldingen in `data.json` in het spel staan. Ben je ingelogd, dan meldt hij ook of deze versie al op de server staat. Zonder internet slaat hij de controle op een nieuwere CLI over. De exitcode is 1 als er iets op te lossen is.
+
+### Beheer
+
+Voor wie de server beheert, met het admintoken (`MINI_ENGINE_ADMIN_TOKEN` van de server, opslaan met `me admin login`). `me admin --help` toont alle beheercommando's; deze gaan over de ruimte voor afbeeldingen:
+
+| Commando | Doet |
+| --- | --- |
+| `me admin accounts [zoekterm]` | Accounts met beheerder, games en gamelimiet, en in de kolom AFBEELDINGEN hoeveel MB het account gebruikt van de ruimte die het heeft, zoals `12,3 van 250 MB`. |
+| `me admin account media <gebruikersnaam> <MB\|standaard>` | Geeft een account 0 tot 1048576 MB voor afbeeldingen. `standaard` zet het terug naar wat de rol geeft. Meer dan 0 kent ook een open aanvraag van dat account toe. |
+| `me admin media requests` | De open aanvragen voor ruimte, oudste eerst, met id, bericht en wat het account nu gebruikt. |
+| `me admin media grant <id> <MB>` | Kent een aanvraag toe: het account krijgt die ruimte (1 tot 1048576 MB). |
+| `me admin media reject <id>` | Wijst een aanvraag af; de ruimte blijft zoals ze was. |
+
+Minder ruimte geven dan een account al gebruikt mag: de afbeeldingen die er staan blijven staan en werken in sets, alleen nieuwe uploads weigert de server dan (409 `quota_media`). Met `--json` krijg je het antwoord van de server.
 
 ## Lokaal testen met me dev
 
@@ -166,7 +180,7 @@ Het overzicht en elke stoel bedienen dezelfde adressen als de server, zoals `/ap
 
 ### Afbeeldingen in een eigen set
 
-Een veld `{ "type": "string", "format": "image" }` in een set-schema is een afbeelding. Op de server uploadt een speler die in de set-editor; in de set staat dan `"/media/<id>"`, en de game toont hem met `<img src="…">`. Lokaal test je zo'n set met `--set`: zet de afbeeldingen in een map `media/` naast het set-bestand en noem ze in de set met `/media/<naam>`:
+Een veld `{ "type": "string", "format": "image" }` in een set-schema is een afbeelding. Op de server uploadt een speler die in de set-editor; in de set staat dan `"/media/<id>"`, en de game toont hem met `<img src="…">`. Uploaden op de server vraagt ruimte, die bij het account hoort (vanaf Mini Engine 0.8.1): een account met een dev key heeft 250 MB, een beheerder 1 GB en ieder ander niets. Wie (meer) ruimte wil, vraagt die aan op de set-pagina van de site; een beheerder kent die aanvraag toe of wijst haar af, en kan de ruimte per account zetten (zie [Beheer](#beheer)). Is de ruimte op, dan weigert de server nieuwe uploads met 409 `quota_media`. Lokaal test je zo'n set met `--set`: zet de afbeeldingen in een map `media/` naast het set-bestand en noem ze in de set met `/media/<naam>`:
 
 ```
 sets/
