@@ -17,12 +17,28 @@ function parseDays(value) {
   return Number(value);
 }
 
+function parseLimit(value) {
+  if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 100) throw usageError('<aantal> moet een heel getal van 1 tot 100 zijn.');
+  return Number(value);
+}
+
 export const adminGroups = [
   { path: ['admin'], summary: 'Beheer voor de eigenaar van de server (admintoken nodig)', description: 'Het admintoken is MINI_ENGINE_ADMIN_TOKEN van de server. Bewaar het met: me admin login' },
   { path: ['admin', 'token'], summary: 'Dev keys van ontwikkelaars beheren' },
   { path: ['admin', 'game'], summary: 'Games van ontwikkelaars blokkeren of vrijgeven' },
-  { path: ['admin', 'account'], summary: 'Accounts van spelers en ontwikkelaars' },
+  { path: ['admin', 'account'], summary: 'Accounts bevestigen, beheerder maken en de gamelimiet aanpassen' },
 ];
+
+async function setAdmin(ctx, admin) {
+  const [username] = ctx.args;
+  const account = await ctx.admin(`/accounts/${enc(username)}/admin`, { method: 'PUT', body: { admin } });
+  return {
+    data: account,
+    text: admin
+      ? `@${account.username} is nu beheerder. Op de site kan die alle games blokkeren of vrijgeven, games uitlichten en de gamelimiet per gebruiker aanpassen.`
+      : `@${account.username} is geen beheerder meer.`,
+  };
+}
 
 async function setBlocked(ctx, blocked) {
   const [id] = ctx.args;
@@ -146,6 +162,53 @@ export const adminCommands = [
       const [username] = ctx.args;
       const result = await ctx.admin(`/accounts/${enc(username)}/verify-email`, { method: 'POST' });
       return { data: result, text: `E-mailadres van ${result.username} (${result.email}) is bevestigd.` };
+    },
+  },
+  {
+    path: ['admin', 'account', 'promote'],
+    usage: 'admin account promote <gebruikersnaam>',
+    summary: 'Account beheerder maken op de site',
+    description: 'Een beheerder kan op de site alle games blokkeren of vrijgeven, games uitlichten en de gamelimiet per gebruiker aanpassen. Beheerders maken of weghalen kan alleen met het admintoken.',
+    args: [1, 1],
+    run: ctx => setAdmin(ctx, true),
+  },
+  {
+    path: ['admin', 'account', 'demote'],
+    usage: 'admin account demote <gebruikersnaam>',
+    summary: 'Beheerder weer een gewoon account maken',
+    args: [1, 1],
+    run: ctx => setAdmin(ctx, false),
+  },
+  {
+    path: ['admin', 'account', 'limit'],
+    usage: 'admin account limit <gebruikersnaam> <aantal>',
+    summary: 'Hoeveel games een account mag uploaden (1-100)',
+    description: 'Games die er al staan blijven staan, ook als het account er dan meer heeft dan de nieuwe limiet.',
+    args: [2, 2],
+    examples: ['me admin account limit sander 25'],
+    async run(ctx) {
+      const [username, value] = ctx.args;
+      const limit = parseLimit(value);
+      const account = await ctx.admin(`/accounts/${enc(username)}/game-limit`, { method: 'PUT', body: { game_limit: limit } });
+      return { data: account, text: `@${account.username} mag nu ${account.game_limit} games uploaden (heeft er ${account.games}).` };
+    },
+  },
+  {
+    path: ['admin', 'accounts'],
+    usage: 'admin accounts [zoekterm]',
+    summary: 'Accounts met beheerder, games en gamelimiet',
+    description: 'Hoogstens 50, op gebruikersnaam. De zoekterm zoekt in gebruikersnaam en naam.',
+    args: [0, 1],
+    async run(ctx) {
+      const [query] = ctx.args;
+      const { accounts } = await ctx.admin(query ? `/accounts?q=${encodeURIComponent(query)}` : '/accounts');
+      const text = accounts.length
+        ? table(
+            ['GEBRUIKER', 'NAAM', 'BEHEERDER', 'GAMES', 'E-MAIL'],
+            accounts.map(account => [account.username, account.display_name, account.admin ? 'ja' : '–', `${account.games} van ${account.game_limit}`, account.email_verified ? 'bevestigd' : '–']),
+          )
+        : query ? `Geen accounts gevonden voor "${query}".` : 'Er zijn nog geen accounts.';
+      return { data: { accounts }, text };
     },
   },
   {
