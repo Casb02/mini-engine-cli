@@ -17,8 +17,9 @@ const post = async (path, body, token) => {
 const snapshot = async (code, token) => (await fetch(`${base}/api/v1/rooms/${code}`, { headers: { authorization: `Bearer ${token}` } })).json();
 
 const browser = await chromium.launch();
-/** Open a seat the way the room launcher does: credentials in that tab's sessionStorage, game in the shell's iframe. */
-async function seat(session, { width = 390, height = 844 } = {}) {
+/** Open a seat the way the room launcher does: credentials in that tab's sessionStorage, game in the shell's iframe.
+ *  Phones default to 393×660, the part of an iPhone that Safari leaves visible with its bars showing; try 375×548 (iPhone SE) too. */
+async function seat(session, { width = 393, height = 660 } = {}) {
   const context = await browser.newContext({ viewport: { width, height } });
   await context.addInitScript(([key, value]) => sessionStorage.setItem(key, value), [`mini-engine:${session.code}:${session.role}`, JSON.stringify(session)]);
   const page = await context.newPage();

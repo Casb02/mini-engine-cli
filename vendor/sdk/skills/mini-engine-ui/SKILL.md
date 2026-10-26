@@ -62,7 +62,7 @@ The kit is in this skill's directory, in `kit/`.
 ## Done means
 
 - [ ] All three pages use the kit, the chosen theme and one signature element; the scaffold's old styles are gone.
-- [ ] Screenshots viewed: player at 390×844, host at 1280×800, display at 1920×1080, in lobby, during play and at the end.
+- [ ] Screenshots viewed: player at 393×660 and 375×548 (a phone browser's visible area with its bars showing), host at 1280×800, display at 1920×1080, in lobby, during play and at the end. Nothing the player needs sits below the bottom edge.
 - [ ] Display readable from across the room (title, numbers, room code), no scrolling.
 - [ ] The display's lobby QR scans from a phone across the room and opens the join form with the code filled in; the room code on host and player copies the join link; "Show QR" opens and closes (Escape, backdrop, Close).
 - [ ] Network: `assets/ui/fonts/*.woff2` load with status 200; no CSP or 404 errors in the console.
