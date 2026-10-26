@@ -22,11 +22,40 @@ function parseLimit(value) {
   return Number(value);
 }
 
+const MAX_MEDIA_MB = 1048576;
+const MiB = 1024 * 1024;
+
+function parseMediaLimit(value) {
+  if (/^standaard$/i.test(value)) return null;
+  if (!/^\d+$/.test(value) || Number(value) > MAX_MEDIA_MB) throw usageError(`<MB> moet een heel aantal MB van 0 tot ${MAX_MEDIA_MB} zijn, of "standaard" voor wat de rol geeft.`);
+  return Number(value);
+}
+
+function parseGrant(value) {
+  if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > MAX_MEDIA_MB) throw usageError(`<MB> moet een heel aantal MB van 1 tot ${MAX_MEDIA_MB} zijn.`);
+  return Number(value);
+}
+
+function parseRequestId(value) {
+  if (!/^\d+$/.test(value)) throw usageError('<id> is het nummer van de aanvraag uit: me admin media requests');
+  return value;
+}
+
+// Bytes in use as MB: one decimal below 100 MB (at least 0,1 when anything is used), whole numbers above.
+function usedMb(bytes = 0) {
+  const mb = bytes / MiB;
+  if (mb >= 100) return String(Math.round(mb));
+  return (mb > 0 ? Math.max(mb, 0.1) : 0).toFixed(1).replace(/\.0$/, '').replace('.', ',');
+}
+
+const mediaSpace = item => `${usedMb(item.media_used)} van ${item.media_limit_mb ?? '?'} MB`;
+
 export const adminGroups = [
   { path: ['admin'], summary: 'Beheer voor de eigenaar van de server (admintoken nodig)', description: 'Het admintoken is MINI_ENGINE_ADMIN_TOKEN van de server. Bewaar het met: me admin login' },
   { path: ['admin', 'token'], summary: 'Dev keys van ontwikkelaars beheren' },
   { path: ['admin', 'game'], summary: 'Games van ontwikkelaars blokkeren of vrijgeven' },
-  { path: ['admin', 'account'], summary: 'Accounts bevestigen, beheerder maken en de gamelimiet aanpassen' },
+  { path: ['admin', 'account'], summary: 'Accounts bevestigen, beheerder maken en de gamelimiet of ruimte voor afbeeldingen aanpassen' },
+  { path: ['admin', 'media'], summary: 'Aanvragen voor ruimte voor afbeeldingen toekennen of afwijzen' },
 ];
 
 async function setAdmin(ctx, admin) {
@@ -194,9 +223,28 @@ export const adminCommands = [
     },
   },
   {
+    path: ['admin', 'account', 'media'],
+    usage: 'admin account media <gebruikersnaam> <MB|standaard>',
+    summary: 'Hoeveel ruimte voor afbeeldingen een account heeft (0-1048576 MB)',
+    description: [
+      'Zonder eigen keuze geeft de rol de ruimte: een beheerder 1024 MB, een account met een werkende dev key 250 MB, ieder ander 0. Met "standaard" geldt dat weer.',
+      'Minder geven dan het account gebruikt mag: wat er staat blijft staan en werkt in sets, alleen nieuwe uploads worden geweigerd. Meer dan 0 kent ook een open aanvraag van het account toe.',
+    ].join('\n\n'),
+    args: [2, 2],
+    examples: ['me admin account media sander 500', 'me admin account media sander standaard'],
+    async run(ctx) {
+      const [username, value] = ctx.args;
+      const mb = parseMediaLimit(value);
+      const account = await ctx.admin(`/accounts/${enc(username)}/media-limit`, { method: 'PUT', body: { media_limit_mb: mb } });
+      const space = `${account.media_limit_mb} MB voor afbeeldingen (gebruikt ${usedMb(account.media_used)} MB).`;
+      const over = account.media_used > account.media_limit_mb * MiB ? ' Wat er staat blijft staan; nieuwe uploads worden geweigerd.' : '';
+      return { data: account, text: `@${account.username} heeft ${mb === null ? 'weer de ruimte van de rol: ' : 'nu '}${space}${over}` };
+    },
+  },
+  {
     path: ['admin', 'accounts'],
     usage: 'admin accounts [zoekterm]',
-    summary: 'Accounts met beheerder, games en gamelimiet',
+    summary: 'Accounts met beheerder, games, gamelimiet en ruimte voor afbeeldingen',
     description: 'Hoogstens 50, op gebruikersnaam. De zoekterm zoekt in gebruikersnaam en naam.',
     args: [0, 1],
     async run(ctx) {
@@ -204,11 +252,57 @@ export const adminCommands = [
       const { accounts } = await ctx.admin(query ? `/accounts?q=${encodeURIComponent(query)}` : '/accounts');
       const text = accounts.length
         ? table(
-            ['GEBRUIKER', 'NAAM', 'BEHEERDER', 'GAMES', 'E-MAIL'],
-            accounts.map(account => [account.username, account.display_name, account.admin ? 'ja' : '–', `${account.games} van ${account.game_limit}`, account.email_verified ? 'bevestigd' : '–']),
+            ['GEBRUIKER', 'NAAM', 'BEHEERDER', 'GAMES', 'AFBEELDINGEN', 'E-MAIL'],
+            accounts.map(account => [account.username, account.display_name, account.admin ? 'ja' : '–', `${account.games} van ${account.game_limit}`, mediaSpace(account), account.email_verified ? 'bevestigd' : '–']),
           )
         : query ? `Geen accounts gevonden voor "${query}".` : 'Er zijn nog geen accounts.';
       return { data: { accounts }, text };
+    },
+  },
+  {
+    path: ['admin', 'media', 'requests'],
+    usage: 'admin media requests',
+    summary: 'Open aanvragen voor ruimte voor afbeeldingen, oudste eerst',
+    description: 'Een speler vraagt ruimte aan op de set-pagina van de site. AFBEELDINGEN is wat het account nu gebruikt van de ruimte die het heeft.',
+    async run(ctx) {
+      const { requests } = await ctx.admin('/media-requests');
+      const text = requests.length
+        ? [
+            table(
+              ['ID', 'GEBRUIKER', 'NAAM', 'AANGEVRAAGD', 'AFBEELDINGEN', 'BERICHT'],
+              requests.map(r => [String(r.id), r.username, r.display_name, formatDate(r.requested_at), mediaSpace(r), String(r.message ?? '').replace(/\s+/g, ' ').trim() || '-']),
+            ),
+            '',
+            'Ken toe met: me admin media grant <id> <MB>',
+            'Wijs af met: me admin media reject <id>',
+          ].join('\n')
+        : 'Er zijn geen open aanvragen voor ruimte voor afbeeldingen.';
+      return { data: { requests }, text };
+    },
+  },
+  {
+    path: ['admin', 'media', 'grant'],
+    usage: 'admin media grant <id> <MB>',
+    summary: 'Aanvraag toekennen met zoveel ruimte (1-1048576 MB)',
+    description: 'Het account krijgt precies deze ruimte, ook als dat minder is dan het al had.',
+    args: [2, 2],
+    examples: ['me admin media grant 4 500'],
+    async run(ctx) {
+      const id = parseRequestId(ctx.args[0]);
+      const mb = parseGrant(ctx.args[1]);
+      const result = await ctx.admin(`/media-requests/${enc(id)}`, { method: 'POST', body: { decision: 'grant', media_limit_mb: mb } });
+      return { data: result, text: `Aanvraag ${id} toegekend: @${result.account.username} heeft nu ${result.account.media_limit_mb} MB voor afbeeldingen.` };
+    },
+  },
+  {
+    path: ['admin', 'media', 'reject'],
+    usage: 'admin media reject <id>',
+    summary: 'Aanvraag afwijzen; de ruimte blijft zoals ze was',
+    args: [1, 1],
+    async run(ctx) {
+      const id = parseRequestId(ctx.args[0]);
+      const result = await ctx.admin(`/media-requests/${enc(id)}`, { method: 'POST', body: { decision: 'reject' } });
+      return { data: result, text: `Aanvraag ${id} afgewezen. @${result.account.username} houdt ${result.account.media_limit_mb} MB voor afbeeldingen.` };
     },
   },
   {
