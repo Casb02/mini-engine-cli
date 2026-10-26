@@ -4,6 +4,7 @@ import { PACKAGE } from '../vendor.mjs';
 import { roomCode } from './engine.mjs';
 import { asEngineError, assetNotFound, EngineError, gameNotFound, invalidJson, notFound, unauthorized } from './errors.mjs';
 import { isObject, parseJson, stringify } from './json.mjs';
+import { MEDIA_CSP } from './media.mjs';
 import { readField, serveRoomSocket } from './socket.mjs';
 import { acceptWebSocket, handshakeProblem } from './websocket.mjs';
 
@@ -139,6 +140,7 @@ const PHONE_SEAT_ROUTES = new Set([
   'GET /api/v1/games/:id/:role',
   'GET /games/:id/*path',
   'GET /releases/:id/:version/*path',
+  'GET /media/:name',
   'GET /api/v1/rooms/:code/info',
   'GET /api/v1/rooms/:code',
   'POST /api/v1/rooms/:code/ready',
@@ -249,6 +251,16 @@ export function createApp({ engine, project, session, launcherPort, lanHosts = [
         if (!active && !engine.pinnedVersions(id).has(version)) throw assetNotFound();
         if (project.metadata.id !== id) throw gameNotFound();
         return asset(path);
+      },
+    ],
+    [
+      'GET',
+      '/media/:name',
+      async ({ name }) => {
+        // Like the engine: the image itself with its own type, never as a page (nosniff comes with every response).
+        const found = await project.media(name);
+        if (!found) throw notFound('media_not_found', 'Deze afbeelding bestaat niet.');
+        return { ...bytes(found.bytes, found.type), policy: MEDIA_CSP };
       },
     ],
     [

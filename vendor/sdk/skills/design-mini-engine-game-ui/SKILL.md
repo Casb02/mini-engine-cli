@@ -56,7 +56,7 @@ An optional `icon` in the manifest (`assets/<name>.svg`, rules in `build-mini-en
 ## Hard constraints (engine CSP and catalog)
 
 - **No inline JavaScript**: no `<script>` bodies, no `onclick="…"`, no import maps. Use `<script type="module" src="/games/<id>/assets/app.js">` and `addEventListener`. Inline `style` attributes and `<style>` are allowed.
-- **Everything self-hosted** under `assets/`: no Google Fonts, CDNs, remote images or analytics (`default-src 'self'`; `img-src` also allows `data:`). Reference files by absolute path `/games/<id>/assets/…`, also inside CSS `url()`.
+- **Everything self-hosted** under `assets/`: no Google Fonts, CDNs, remote images or analytics (`default-src 'self'`; `img-src` also allows `data:`). Reference files by absolute path `/games/<id>/assets/…`, also inside CSS `url()`. Pictures from players' own sets (`/media/<id>`, engine 0.8+) are same-origin too: show them with `<img src>` in a fixed box (`max-height` plus `object-fit: contain`) so a tall photo never pushes the answer buttons off a phone screen, and larger on the display.
 - **Fonts**: a system stack, or `.woff2` files in `assets/fonts/` with their license file next to them, loaded with `@font-face { font-display: swap; }`. Two families at most.
 - Files ≤ 2 MiB each, package ≤ 10 MiB: compress images, subset fonts, vendor libraries minified with their license.
 - Render player names and any user text with `textContent` (or escape it); never build HTML from untrusted strings.

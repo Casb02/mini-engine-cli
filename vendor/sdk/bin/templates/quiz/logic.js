@@ -5,17 +5,20 @@ export const MIN_PLAYERS = 1;
 /** How long everyone sees the right answer before the next question. */
 export const REVEAL_MS = 5000;
 
-/** @typedef {{ text: string, answers: string[], correct: number }} Question */
-/** @typedef {{ phase: 'question' | 'reveal' | 'done', index: number, total: number, question: string, answers: string[], deadline: number, answered: Record<string, boolean>, scores: Record<string, number>, correct: number | null, picks: Record<string, number> }} Quiz Public: everyone sees it. */
+/** @typedef {{ text: string, answers: string[], correct: number, image: string | null }} Question */
+/** @typedef {{ phase: 'question' | 'reveal' | 'done', index: number, total: number, question: string, image: string | null, answers: string[], deadline: number, answered: Record<string, boolean>, scores: Record<string, number>, correct: number | null, picks: Record<string, number> }} Quiz Public: everyone sees it. */
 /** @typedef {{ questions: Question[], picks: Record<string, number> }} Secret Only the host sees it. */
 
-/** A line reads "question | right answer | wrong answer | …". @param {unknown} line @returns {{ text: string, answers: string[] } | null} */
-export function parseLine(line) {
-  if (typeof line !== 'string') return null;
-  const [text, ...rest] = line.split('|').map(part => part.trim());
+/** An image field: `/media/…` from a player's set or `assets/…` from data.json; anything else is dropped. @param {unknown} value @returns {string | null} */
+export const imageOf = value => typeof value === 'string' && /^(?!.*\.\.)(?:\/media\/[\w.-]+|assets\/[\w./-]+)$/.test(value) ? value : null;
+
+/** An item is { question: "question | right answer | wrong answer | …", image? }. @param {unknown} item @returns {{ text: string, answers: string[], image: string | null } | null} */
+export function parseQuestion(item) {
+  if (!item || typeof item !== 'object' || !('question' in item) || typeof item.question !== 'string') return null;
+  const [text, ...rest] = item.question.split('|').map(part => part.trim());
   const answers = rest.filter(Boolean);
   if (!text || answers.length < 2 || answers.length > 6) return null;
-  return { text, answers };
+  return { text, answers, image: 'image' in item ? imageOf(item.image) : null };
 }
 
 /** @template T @param {T[]} list @param {() => number} random */
@@ -27,26 +30,26 @@ function shuffle(list, random) {
   return list;
 }
 
-/** Picks `count` questions in a random order, each with its answers shuffled. @param {unknown[]} lines @param {number} count @param {() => number} random @returns {Question[]} */
-export function pickQuestions(lines, count, random) {
-  const parsed = lines.map(parseLine).filter(question => question !== null);
-  return shuffle(parsed, random).slice(0, count).map(({ text, answers }) => {
+/** Picks `count` questions in a random order, each with its answers shuffled. @param {unknown[]} items @param {number} count @param {() => number} random @returns {Question[]} */
+export function pickQuestions(items, count, random) {
+  const parsed = items.map(parseQuestion).filter(question => question !== null);
+  return shuffle(parsed, random).slice(0, count).map(({ text, answers, image }) => {
     const order = shuffle(answers.map((_, index) => index), random);
-    return { text, answers: order.map(index => answers[index]), correct: order.indexOf(0) };
+    return { text, answers: order.map(index => answers[index]), correct: order.indexOf(0), image };
   });
 }
 
 /** @param {Quiz} quiz @param {Secret} secret @param {number} index @param {number} deadline @returns {Quiz} */
 function ask(quiz, secret, index, deadline) {
-  const { text, answers } = secret.questions[index];
-  return { ...quiz, phase: 'question', index, question: text, answers, deadline, answered: {}, correct: null, picks: {} };
+  const { text, answers, image } = secret.questions[index];
+  return { ...quiz, phase: 'question', index, question: text, image, answers, deadline, answered: {}, correct: null, picks: {} };
 }
 
 /** @param {string[]} playerIds @param {Question[]} questions @param {number} deadline @returns {{ quiz: Quiz, secret: Secret }} */
 export function newQuiz(playerIds, questions, deadline) {
   const secret = { questions, picks: {} };
   const scores = Object.fromEntries(playerIds.map(id => [id, 0]));
-  const blank = { phase: /** @type {const} */ ('question'), index: 0, total: questions.length, question: '', answers: [], deadline, answered: {}, scores, correct: null, picks: {} };
+  const blank = { phase: /** @type {const} */ ('question'), index: 0, total: questions.length, question: '', image: null, answers: [], deadline, answered: {}, scores, correct: null, picks: {} };
   return { quiz: ask(blank, secret, 0, deadline), secret };
 }
 

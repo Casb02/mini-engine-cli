@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { CliError } from '../errors.mjs';
 import { checkLimits, checkManifest, collectFiles } from '../pack.mjs';
 import { isObject } from './json.mjs';
-import { validateAchievements, validateSetKinds, validateSettings, validateSettingsSchema } from './schema.mjs';
+import { dataImageProblems, validateAchievements, validateSetKinds, validateSettings, validateSettingsSchema } from './schema.mjs';
 
 const MODES = ['moderator', 'playing', 'tv', 'hostless'];
 const ROLES = ['host', 'player', 'display'];
@@ -130,5 +130,7 @@ export async function loadPackage(dir) {
     }
   }
   const assets = new Map([...contents].filter(([path]) => path.startsWith('assets/')));
-  return { dir, manifest, metadata, html, data, assets, paths, manifestPath: join(dir, 'manifest.json') };
+  // The engine takes any data.json; an image in it that has the shape of a set is only a warning here.
+  const warnings = dataImageProblems(metadata.set_kinds, data, path => assets.has(path)).map(problem => `data.json: ${problem}`);
+  return { dir, manifest, metadata, html, data, assets, paths, warnings, manifestPath: join(dir, 'manifest.json') };
 }

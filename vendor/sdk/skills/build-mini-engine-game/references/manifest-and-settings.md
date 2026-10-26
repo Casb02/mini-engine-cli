@@ -122,6 +122,8 @@ Never put such data under `assets/` or in HTML — those are public URLs. Reveal
 
 When the room was created with a player's own set (`room.set` is `{id, kind, title}`), `gameData` returns that set's content instead of `data.json`. Give `data.json` the same shape as your set kind, so one code path reads both, and still check the shape once.
 
+Default pictures for an image field (below) go in the package, and `data.json` names them by package path: `"image": "assets/vragen/1.png"` (relative, under `assets/`, no `..`). Like every asset they are public URLs, so a picture that gives away an answer can be fetched by anyone who guesses its path.
+
 ## set_kinds and the set schema dialect (0.5+)
 
 A set kind describes content players may make for your game, such as their own question list:
@@ -162,6 +164,7 @@ The dialect is a small, bounded part of JSON Schema, checked by `me dev`, `me ga
 | `object` | `properties` (required), `required` (unique names of its own properties), `additionalProperties: false` (required on every object) |
 | `array` | `items` (required, one schema), `minItems`, `maxItems` |
 | `string` | `minLength`, `maxLength` (characters), `enum` (1–256 unique strings, each within the length bounds) |
+| `string` with `format: "image"` (engine 0.8+) | none: no `minLength`, `maxLength` or `enum` |
 | `integer`, `number` | `minimum`, `maximum` |
 | `boolean` | none |
 
@@ -171,5 +174,59 @@ The dialect is a small, bounded part of JSON Schema, checked by `me dev`, `me ga
 - Unlike `settings_schema`, `enum` only works on strings.
 - Data: properties outside `required` may be left out but never `null`; unknown properties are refused; integers must be whole numbers. Errors name the place, such as `questions[3].answer: gebruik 1–80 tekens.`
 - A saved set is ≤ 64 KiB serialized and is checked against the kind in the game's **active** release, and again when a room is created with it. Rooms keep their own copy.
+
+### Image fields (engine 0.8+)
+
+`{"type": "string", "format": "image"}` holds a picture, such as a photo with a quiz question. To make it optional, leave it out of `required` (an empty string is not an image). The set editor at `/home/sets` shows a thumbnail and a "Kies een afbeelding" button and uploads the file to the player's account.
+
+| Where | Value |
+| --- | --- |
+| Saved set | `/media/<32 hex>`: an image uploaded by the same account (`ApiClient.uploadMedia`). Anything else, or another account's image: 400 naming the field. |
+| `data.json` | A package file: `assets/…`, relative, no `..` (default pictures). |
+| `me dev --set` | `/media/<name>` for a file in a `media/` folder next to the set file, or a 32-hex id. |
+
+Limits (the engine applies them; the game only shows the result):
+
+| Limit | Value | Error |
+| --- | --- | --- |
+| Upload formats | PNG, JPEG, WebP, GIF (first frame), detected from the bytes | 415 `media_unsupported` (SVG, HEIC, …) |
+| Upload size | ≤ 10 MiB raw; ≤ 40 million pixels | 413 `media_too_large`; 400 `media_invalid` |
+| Stored image | Re-encoded JPEG (PNG when transparent), metadata stripped, upright, longest side ≤ 1920 px (never enlarged), ≤ 1 MiB | — |
+| Per account | ≤ 250 MiB of images | 409 `quota_media` |
+| Per set | ≤ 100 distinct images, ≤ 50 MiB together | 409 `quota_set_media` |
+| Unused images | Deleted once older than 24 h while no set of the account uses them | — |
+| Uploads | 60 per minute per address | 429 `rate_limit` |
+
+A quiz question with an optional picture, a list of flat objects so the set editor shows a block per question:
+
+```json
+"set_kinds": [{
+  "id": "questions",
+  "title": "Vragenlijst",
+  "description": "Vragen met één goed antwoord en eventueel een afbeelding.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["questions"],
+    "properties": {
+      "questions": {
+        "type": "array", "minItems": 3, "maxItems": 50, "title": "Vragen",
+        "items": {
+          "type": "object", "title": "Vraag",
+          "additionalProperties": false,
+          "required": ["question", "answer"],
+          "properties": {
+            "question": { "type": "string", "minLength": 1, "maxLength": 200, "title": "Vraag" },
+            "answer": { "type": "string", "minLength": 1, "maxLength": 80, "title": "Antwoord" },
+            "image": { "type": "string", "format": "image", "title": "Afbeelding", "description": "Wordt bij de vraag getoond." }
+          }
+        }
+      }
+    }
+  }
+}]
+```
+
+Showing it: `host-runtime-patterns.md` §13. A server older than 0.8 (and a CLI older than 0.8) refuses `format`, so such a game only uploads to 0.8+.
 
 The create form shows settings in the order of the schema's `required` list, then the rest (engine 0.5.5+; the server returns keys sorted). Players make and edit sets at `/home/sets`. Since engine 0.5.3 a kind whose fields are only text, numbers, booleans, lists of strings or lists of flat objects gets a form: a list of strings is a textarea with one item per line, a list of flat objects gets a block per item with add/remove, and server errors point at the line or field. Anything nested deeper falls back to a plain JSON editor. So design set kinds to fit the form: keep them flat, give every field a `title` (and a `description` where it helps), give `items` a singular `title` ("Vraag" for a list called "Vragen"), and list fields in `required` in the order people should fill them in (the form shows required fields first, in that order).

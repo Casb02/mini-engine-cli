@@ -358,6 +358,25 @@ describe('game', () => {
     assert.equal(current.stderr, '');
   });
 
+  test('upload warns before uploading image fields in sets to a server older than 0.8', async () => {
+    const pictures = [{ ...SET_KINDS[0], schema: { type: 'object', additionalProperties: false, properties: { plaatje: { type: 'string', format: 'image' } } } }];
+    fake.state.version = '0.7.1';
+    const dir = await newGame();
+    await declare(dir, { set_kinds: pictures });
+    const old = await authed(['game', 'upload', 'kwis']);
+    assert.equal(old.code, 0, old.stderr);
+    assert.match(old.stderr, /^Let op: http:\/\/127\.0\.0\.1:\d+ draait Mini Engine 0\.7\.1\. Afbeeldingen in sets \(format "image"\) werken pas vanaf Mini Engine 0\.8; deze server weigert dit schema\.\n$/);
+
+    await bump(dir, '0.2.0');
+    await declare(dir, { set_kinds: SET_KINDS });
+    assert.equal((await authed(['game', 'upload', 'kwis'])).stderr, '', 'no images, no warning');
+
+    fake.state.version = '0.8.0';
+    await bump(dir, '0.3.0');
+    await declare(dir, { set_kinds: pictures });
+    assert.equal((await authed(['game', 'upload', 'kwis'])).stderr, '');
+  });
+
   test('upload refuses malformed achievements and set kinds before contacting the server', async () => {
     const dir = await newGame();
     const many = count => Array.from({ length: count }, (_, i) => ({ ...SET_KINDS[0], id: `soort-${i}` }));

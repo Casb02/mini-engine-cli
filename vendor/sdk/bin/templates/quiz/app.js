@@ -111,6 +111,10 @@ if (client) {
     return quiz.phase === 'question' ? `${where} · ${fill(t.secondsLeft, { s: seconds })}` : where;
   };
 
+  /** An image field is `/media/…` (same origin) or a package path `assets/…`, resolved from this module in assets/. @param {string} image */
+  const imageSrc = image => (image.startsWith('assets/') ? new URL(image.slice('assets/'.length), import.meta.url).href : image);
+  const picture = /** @type {HTMLImageElement} */ ($('picture'));
+
   let shown = -1;
   mount(client, (room, page) => {
     const quiz = quizOf(room);
@@ -118,6 +122,9 @@ if (client) {
     $('rules').hidden = room.status !== 'lobby';
     $('answers').hidden = !quiz || quiz.phase === 'done';
     $('scores').hidden = !quiz || quiz.phase === 'question';
+    const image = quiz && quiz.phase !== 'done' && quiz.image ? imageSrc(quiz.image) : '';
+    picture.hidden = !image;
+    if (image && picture.getAttribute('src') !== image) picture.src = image;
     if (!quiz) {
       $('question').textContent = t.headline;
       $('progress').textContent = '';

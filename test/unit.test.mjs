@@ -8,6 +8,8 @@ import { checkManifest, collectFiles, compileIgnore, isIgnored, packGame, parseI
 import { selectPrune } from '../src/prune.mjs';
 import { Readable } from 'node:stream';
 import { createApp, isLoopback } from '../src/dev/http.mjs';
+import { loadPackage } from '../src/dev/package.mjs';
+import { dataImageProblems, hasImageFields, validateSetData, validateSetSchema } from '../src/dev/schema.mjs';
 import { scaffoldGame } from '../src/scaffold.mjs';
 import { tempHome } from './helpers/run.mjs';
 
@@ -303,6 +305,59 @@ describe('packing', () => {
   });
 });
 
+describe('images in set schemas', () => {
+  const image = (extra = {}) => ({ type: 'string', format: 'image', ...extra });
+  const board = (field = image()) => ({ type: 'object', additionalProperties: false, required: ['vragen'], properties: { vragen: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['vraag'], properties: { vraag: { type: 'string' }, plaatje: field } } } } });
+  const ID = '0123456789abcdef0123456789abcdef';
+
+  test('a string may have format image, without minLength, maxLength or enum', () => {
+    validateSetSchema(image());
+    validateSetSchema(image({ title: 'Plaatje', description: 'Bij de vraag.' }));
+    validateSetSchema(board());
+    validateSetSchema({ type: 'array', items: image(), maxItems: 4 });
+    const refused = (schema, pattern) => assert.throws(() => validateSetSchema(schema), pattern);
+    refused(image({ minLength: 1 }), /schema: minLength kan niet samen met format "image"\./);
+    refused(image({ maxLength: 200 }), /schema: maxLength kan niet samen met format "image"\./);
+    refused(image({ enum: ['/media/a'] }), /schema: enum kan niet samen met format "image"\./);
+    refused(board(image({ maxLength: 9 })), /schema\.properties\.vragen\.items\.properties\.plaatje: maxLength kan niet samen met format "image"\./);
+    refused(image({ format: 'uri' }), /schema: format kan alleen "image" zijn\./);
+    refused(image({ format: 7 }), /schema: format kan alleen "image" zijn\./);
+    refused({ type: 'integer', format: 'image' }, /schema: format wordt niet ondersteund bij type integer\./);
+    refused({ type: 'object', additionalProperties: false, properties: {}, format: 'image' }, /format wordt niet ondersteund bij type object/);
+    assert.equal(hasImageFields(board()), true);
+    assert.equal(hasImageFields(board({ type: 'string' })), false);
+  });
+
+  test('in an account set an image is /media/ with the id of an upload; optional images may be left out', () => {
+    validateSetData(board(), { vragen: [{ vraag: 'Wie?', plaatje: `/media/${ID}` }, { vraag: 'Waar?' }] });
+    const refused = (data, pattern) => assert.throws(() => validateSetData(board(), data), pattern);
+    refused({ vragen: [{ vraag: 'Wie?', plaatje: '' }] }, /vragen\[0\]\.plaatje: kies een afbeelding\./);
+    refused({ vragen: [{ vraag: 'Wie?', plaatje: 7 }] }, /vragen\[0\]\.plaatje: verwacht een afbeelding\./);
+    for (const value of [`/media/${ID.toUpperCase()}`, `/media/${ID}0`, `https://example.com/media/${ID}`, `media/${ID}`, '/media/plaatje.png', 'assets/plaatje.png']) {
+      refused({ vragen: [{ vraag: 'Wie?', plaatje: value }] }, /vragen\[0\]\.plaatje: verwacht een afbeelding: \/media\/ met het id van een eigen upload\./);
+    }
+  });
+
+  test('an image in data.json is a file in the game under assets/', () => {
+    const files = new Set(['assets/vragen/1.png']);
+    const has = path => files.has(path);
+    assert.deepEqual(dataImageProblems([{ id: 'bord', schema: board() }], { vragen: [{ vraag: 'Wie?', plaatje: 'assets/vragen/1.png' }] }, has), []);
+    assert.deepEqual(dataImageProblems([{ id: 'bord', schema: board() }], { vragen: [{ vraag: 'Wie?', plaatje: 'assets/vragen/2.png' }] }, has), ['vragen[0].plaatje: assets/vragen/2.png staat niet in de game.']);
+    for (const value of ['/media/1.png', '../assets/vragen/1.png', 'assets/../manifest.json', 'assets//vragen/1.png', '/games/demo/assets/vragen/1.png', 'vragen/1.png', 'assets\\vragen\\1.png', '']) {
+      assert.deepEqual(dataImageProblems([{ id: 'bord', schema: board() }], { vragen: [{ vraag: 'Wie?', plaatje: value }] }, has), ['vragen[0].plaatje: gebruik een pad naar een bestand in de game, zoals assets/plaatje.png.'], value);
+    }
+    assert.deepEqual(dataImageProblems([{ id: 'bord', schema: board() }], { iets: 'anders' }, has), [], 'a data.json that is no set is left alone');
+    assert.deepEqual(dataImageProblems([{ id: 'bord', schema: board() }], null, has), []);
+  });
+
+  test('the quiz template has pictures in its set and passes the engine rules', async () => {
+    const { directory } = await scaffoldGame('plaatjesquiz', join(home, 'plaatjesquiz'), { template: 'quiz' });
+    const pkg = await loadPackage(directory);
+    assert.equal(hasImageFields(pkg.metadata.set_kinds[0].schema), true);
+    assert.deepEqual(pkg.warnings, []);
+  });
+});
+
 describe('prune selection', () => {
   const release = (version, created_at, extra = {}) => ({ version, created_at, active: false, in_use: false, ...extra });
   const game = versions => ({ id: 'g', active_version: versions.find(r => r.active)?.version ?? null, versions });
@@ -342,7 +397,7 @@ describe('me dev access from the network', () => {
   const calls = [];
   const app = createApp({
     engine: { info: () => ({ game_id: 'feest', game_version: '0.1.0' }) },
-    project: { metadata: { id: 'feest', version: '0.1.0' }, html: () => '<p>speler</p>', asset: () => undefined },
+    project: { metadata: { id: 'feest', version: '0.1.0' }, html: () => '<p>speler</p>', asset: () => undefined, media: async () => null },
     session: () => ({
       state: () => ({ seats: [{ hash: 'geheim' }] }),
       joinInfo: () => ({ title: 'Feest', open: true }),
@@ -401,6 +456,7 @@ describe('me dev access from the network', () => {
     assert.equal((await send(PHONE, 'GET', '/room/ABCDEF/player')).status, 200);
     assert.equal((await send(PHONE, 'GET', '/sdk/mini-engine.js')).status, 200);
     assert.equal((await send(PHONE, 'GET', '/api/v1/games/feest/player?room=ABCDEF')).status, 200);
+    assert.equal((await send(PHONE, 'GET', '/media/plaatje.png')).json.error.code, 'media_not_found', 'a phone may load the pictures of a set');
     for (const [method, path] of [
       ['GET', '/room/ABCDEF/host'],
       ['GET', '/room/ABCDEF/display'],

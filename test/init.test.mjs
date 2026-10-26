@@ -207,6 +207,16 @@ describe('me doctor', () => {
     assert.match(result.stdout, /– CLI [\d.]+; nieuwste versie niet bekeken \(geen verbinding met GitHub\)/);
     assert.match(result.stdout, /✗ Je dev key med_…0000 werkt niet op .*\n {4}Log opnieuw in met: me auth/);
     assert.match(result.stdout, /✗ Het spel nieuwe-naam 0\.1\.0 in hernoemd mist bestanden\. host\.html laadt \/games\/hernoemd\/assets\/style\.css, maar het id van het spel is nieuwe-naam\. \(en nog \d+\)\n {4}Verander het pad in \/games\/nieuwe-naam\/assets\/style\.css\./);
+    await me(['game', 'new', 'plaatjes']);
+    const image = { type: 'object', additionalProperties: false, properties: { plaatje: { type: 'string', format: 'image' } } };
+    const plain = await manifestOf(join(home, 'plaatjes'));
+    await writeFile(join(home, 'plaatjes', 'manifest.json'), JSON.stringify({ ...plain, set_kinds: [{ id: 'foto', title: 'Foto', description: 'Eén plaatje.', schema: image }] }));
+    await writeFile(join(home, 'plaatjes', 'data.json'), JSON.stringify({ plaatje: 'assets/kat.png' }));
+    const pictures = await me(['doctor', 'plaatjes'], { env: { MINIENGINE_VERSION_URL: `http://127.0.0.1:${port}/package.json` } });
+    assert.match(pictures.stdout, /✗ Het spel plaatjes 0\.1\.0 in plaatjes mist bestanden\. data\.json: plaatje: assets\/kat\.png staat niet in de game\.\n {4}Zet de afbeelding in assets\/ en gebruik dat pad/);
+    await writeFile(join(home, 'plaatjes', 'assets', 'kat.png'), 'png');
+    const fixed = await me(['doctor', 'plaatjes', '--json'], { env: { MINIENGINE_VERSION_URL: `http://127.0.0.1:${port}/package.json` } });
+    assert.equal(fixed.json().checks.find(check => check.id === 'game').ok, true);
     const none = await me(['doctor', 'bestaat-niet']);
     assert.match(none.stdout, /✗ Geen manifest.json in bestaat-niet\.\n {4}Maak een spel met: me init/);
   });
