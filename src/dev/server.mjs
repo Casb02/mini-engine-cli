@@ -8,6 +8,7 @@ import { CliError } from '../errors.mjs';
 import { DevEngine } from './engine.mjs';
 import { EngineError, notFound } from './errors.mjs';
 import { createApp } from './http.mjs';
+import { mediaFolder, readMedia, setImageChecker } from './media.mjs';
 import { loadPackage } from './package.mjs';
 import { validateSetContent } from './schema.mjs';
 
@@ -32,9 +33,10 @@ export async function loadSet(path, metadata, id) {
   if (!metadata.set_kinds.length) return { set: null, data, override: true };
   const title = [...name.replace(/\.json$/i, '').trim()].slice(0, 80).join('') || 'Eigen set';
   const problems = [];
+  const image = setImageChecker(path);
   for (const kind of metadata.set_kinds) {
     try {
-      validateSetContent(metadata, kind.id, data);
+      validateSetContent(metadata, kind.id, data, image);
       return { set: { id, kind: kind.id, title }, data, override: false };
     } catch (error) {
       problems.push(`${kind.id}: ${error.message}`);
@@ -79,6 +81,15 @@ class DevProject {
 
   asset(path) {
     return this.pkg.assets.get(path);
+  }
+
+  /** How the engine checks the image fields of the room's set: the files of a --set file sit in media/ next to it. */
+  get setImage() {
+    return this.setFile ? setImageChecker(this.setFile) : undefined;
+  }
+
+  media(name) {
+    return readMedia(this.setFile ? mediaFolder(this.setFile) : null, name);
   }
 
   chooseSet(id) {
@@ -264,6 +275,8 @@ function listenOn(server, port, host) {
 
 export async function startDev({ dir, port = 3170, players = 2, setFile = null, lan = false, log = () => {}, warn = () => {} }) {
   const project = await DevProject.load(dir, setFile);
+  let warned = project.pkg.warnings.join('\n');
+  for (const text of project.pkg.warnings) warn(text);
   const servers = [];
   let launcherPort = null;
   let session = null;
@@ -362,6 +375,9 @@ export async function startDev({ dir, port = 3170, players = 2, setFile = null, 
     try {
       await project.reload();
       project.problem = null;
+      const warnings = project.pkg.warnings.join('\n');
+      if (warnings && warnings !== warned) project.pkg.warnings.forEach(text => warn(text));
+      warned = warnings;
       if (before) log('De game is weer in orde.');
       log(files.length ? `Herladen na wijziging in ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` en ${files.length - 3} meer` : ''}.` : 'Herladen.');
     } catch (error) {

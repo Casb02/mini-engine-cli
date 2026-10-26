@@ -389,7 +389,7 @@ describe('me dev access from the network', () => {
   const calls = [];
   const app = createApp({
     engine: { info: () => ({ game_id: 'feest', game_version: '0.1.0' }) },
-    project: { metadata: { id: 'feest', version: '0.1.0' }, html: () => '<p>speler</p>', asset: () => undefined },
+    project: { metadata: { id: 'feest', version: '0.1.0' }, html: () => '<p>speler</p>', asset: () => undefined, media: async () => null },
     session: () => ({
       state: () => ({ seats: [{ hash: 'geheim' }] }),
       joinInfo: () => ({ title: 'Feest', open: true }),
@@ -448,6 +448,7 @@ describe('me dev access from the network', () => {
     assert.equal((await send(PHONE, 'GET', '/room/ABCDEF/player')).status, 200);
     assert.equal((await send(PHONE, 'GET', '/sdk/mini-engine.js')).status, 200);
     assert.equal((await send(PHONE, 'GET', '/api/v1/games/feest/player?room=ABCDEF')).status, 200);
+    assert.equal((await send(PHONE, 'GET', '/media/plaatje.png')).json.error.code, 'media_not_found', 'a phone may load the pictures of a set');
     for (const [method, path] of [
       ['GET', '/room/ABCDEF/host'],
       ['GET', '/room/ABCDEF/display'],

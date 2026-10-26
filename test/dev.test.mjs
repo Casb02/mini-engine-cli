@@ -656,6 +656,78 @@ describe('me dev', () => {
     assert.equal(missing.json.error.code, 'set_not_found');
   });
 
+  test('pictures: a --set file names images in media/ next to it, me dev serves them, data.json uses assets/', async () => {
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    const ID = '0123456789abcdef0123456789abcdef';
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['vragen'],
+      properties: {
+        vragen: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'object', additionalProperties: false, required: ['vraag'], properties: { vraag: { type: 'string' }, plaatje: { type: 'string', format: 'image' } } },
+        },
+      },
+    };
+    const dir = await writeGame(home, 'plaatjes', manifest => ({ ...manifest, set_kinds: [{ id: 'bord', title: 'Bord', description: 'Vragen met plaatjes.', schema }] }));
+    await mkdir(join(dir, 'assets', 'vragen'), { recursive: true });
+    await writeFile(join(dir, 'assets', 'vragen', '1.png'), PNG);
+    await writeFile(join(dir, 'data.json'), JSON.stringify({ vragen: [{ vraag: 'Standaard?', plaatje: 'assets/vragen/1.png' }] }));
+    const sets = join(home, 'sets');
+    await mkdir(join(sets, 'media'), { recursive: true });
+    await writeFile(join(sets, 'media', 'kat.png'), PNG);
+    await writeFile(join(sets, 'media', 'notitie.txt'), 'geen plaatje');
+    const tryWith = async (name, data) => {
+      await writeFile(join(sets, name), JSON.stringify(data));
+      return runMe(['dev', 'plaatjes', '--set', `sets/${name}`, '--no-open'], { home });
+    };
+    const missing = await tryWith('mist.json', { vragen: [{ vraag: 'Wie?', plaatje: '/media/hond.png' }] });
+    assert.equal(missing.code, 1);
+    assert.match(missing.stderr, /mist\.json past niet bij set-soort bord: vragen\[0\]\.plaatje: hond\.png staat niet in media\/ naast mist\.json\./);
+    const badName = await tryWith('naam.json', { vragen: [{ vraag: 'Wie?', plaatje: '/media/../kat.png' }] });
+    assert.match(badName.stderr, /vragen\[0\]\.plaatje: \/media\/\.\.\/kat\.png is geen geldige naam; gebruik alleen letters, cijfers, \., _ en -/);
+    const notImage = await tryWith('tekst.json', { vragen: [{ vraag: 'Wie?', plaatje: '/media/notitie.txt' }] });
+    assert.match(notImage.stderr, /vragen\[0\]\.plaatje: notitie\.txt is geen PNG, JPEG, WebP of GIF\./);
+    const elsewhere = await tryWith('extern.json', { vragen: [{ vraag: 'Wie?', plaatje: 'https://example.com/kat.png' }] });
+    assert.match(elsewhere.stderr, /vragen\[0\]\.plaatje: verwacht een afbeelding: \/media\/<naam> van een bestand in media\/ naast extern\.json, of \/media\/ met het id van een upload\./);
+    const empty = await tryWith('leeg.json', { vragen: [{ vraag: 'Wie?', plaatje: '' }] });
+    assert.match(empty.stderr, /vragen\[0\]\.plaatje: kies een afbeelding\./);
+
+    await writeFile(join(sets, 'dieren.json'), JSON.stringify({ vragen: [{ vraag: 'Wie?', plaatje: '/media/kat.png' }, { vraag: 'Van de server', plaatje: `/media/${ID}` }, { vraag: 'Zonder' }] }));
+    const run = await launch(['plaatjes', '--set', 'sets/dieren.json', '--port', '0']);
+    assert.match(run.stdout, /Set: dieren \(bord\)/);
+    assert.equal(run.stderr, '', 'a data.json with pictures in the game raises no warning');
+    const state = (await call(run.url, '/__me/state')).json;
+    const seat = state.seats.find(item => item.role === 'player');
+    const credential = JSON.parse(decodeURIComponent(seat.hash));
+    const seatBase = `http://127.0.0.1:${seat.port}`;
+    const data = await call(seatBase, `/api/v1/rooms/${credential.code}/game-data`, { token: JSON.parse(decodeURIComponent(state.seats[0].hash)).token });
+    assert.equal(data.json.vragen[0].plaatje, '/media/kat.png');
+    const image = await fetch(`${seatBase}/media/kat.png`);
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get('content-type'), 'image/png');
+    assert.equal(image.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(image.headers.get('content-security-policy'), "default-src 'none'; sandbox");
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), PNG);
+    for (const path of ['/media/hond.png', '/media/notitie.txt', `/media/${ID}`, '/media/..%2Fdieren.json', '/media/.verborgen']) {
+      const response = await call(seatBase, path);
+      assert.equal(response.status, 404, path);
+      assert.equal(response.json.error.code, 'media_not_found', path);
+    }
+    const page = await call(seatBase, `/api/v1/games/plaatjes/player?room=${credential.code}`);
+    assert.match(page.headers.get('content-security-policy'), /img-src 'self'/);
+    assert.equal((await fetch(`${seatBase}/games/plaatjes/assets/vragen/1.png`)).headers.get('content-type'), 'image/png');
+    const chosen = await call(run.url, '/api/v1/rooms', { method: 'POST', body: { game_id: 'plaatjes', set_id: state.set.id } });
+    assert.equal(chosen.status, 201, 'the engine accepts the set with local images when a room is made with it');
+
+    await writeFile(join(dir, 'data.json'), JSON.stringify({ vragen: [{ vraag: 'Standaard?', plaatje: 'assets/vragen/2.png' }] }));
+    await until(() => run.stderr.includes('data.json: vragen[0].plaatje: assets/vragen/2.png staat niet in de game.'), 'a warning about the missing picture');
+    await writeFile(join(dir, 'data.json'), JSON.stringify({ vragen: [{ vraag: 'Standaard?', plaatje: '/media/kat.png' }] }));
+    await until(() => run.stderr.includes('data.json: vragen[0].plaatje: gebruik een pad naar een bestand in de game, zoals assets/plaatje.png.'), 'a warning about a picture outside the game');
+  });
+
   test('every seat has its own port; the launcher frames them and adds players', async () => {
     await writeGame(home, 'stoelen');
     const run = await launch(['stoelen', '--port', '0', '--players', '3']);

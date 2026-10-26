@@ -160,7 +160,7 @@ export class DevEngine {
     let chosen = null;
     if (input.set_id !== null && input.set_id !== undefined) {
       chosen = this.game.chooseSet(input.set_id);
-      validateSetContent(metadata, chosen.set.kind, chosen.data);
+      validateSetContent(metadata, chosen.set.kind, chosen.data, this.game.setImage);
     }
     return this.createWithOptions(metadata, max, settings, { config, accountId, set: chosen, name: input.name });
   }
