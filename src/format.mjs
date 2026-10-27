@@ -43,6 +43,11 @@ export function gameStatus(game) {
   return game.enabled ? 'aan' : 'uit';
 }
 
+// The PRIVÉ column: a server before Mini Engine 0.9 does not send the field.
+export const privateCell = game => (typeof game.private === 'boolean' ? yesNo(game.private) : '-');
+
+export const gameState = game => `${gameStatus(game)}${game.private ? ', privé' : ''}`;
+
 export function tildePath(path, home) {
   if (home && (path === home || path.startsWith(`${home}/`))) return `~${path.slice(home.length)}`;
   return path;

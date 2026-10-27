@@ -52,11 +52,11 @@ Interact with game elements through `seat.game` (a frame locator into the game i
 me game upload                  # bump "version" in manifest.json first; a version can never be overwritten
 ```
 
-- **The first upload of a new game is live at once:** everyone on that server sees it on `/home`. Later versions only become active with `me game upload --activate` (or `me game activate <id> <version>`), and only rooms created after that get them. Roll back with `me game activate <id> <previous version>`.
-- To test without touching a published game, upload a copy with its own `id` in `manifest.json` (such as `<id>-test`) and turn it off afterwards with `me game disable <id>-test`.
-- After an active upload the CLI prints `<server>/home/new/<id>`. Create a room there ("Iedereen doet mee", then again with "TV" when the game offers it); join on phones with the code or the QR code; open the display from **Kamer** → **Open het gedeelde scherm**. One private window or device per seat: `sessionStorage` (where seat credentials live) is per tab and is copied by "duplicate", which makes both tabs the same seat (`session_replaced`).
+- **The first upload of a new game is live at once:** everyone on that server sees it on `/home`, unless you upload with `--private` (Mini Engine 0.9+). Later versions only become active with `me game upload --activate` (or `me game activate <id> <version>`), and only rooms created after that get them. Roll back with `me game activate <id> <previous version>`.
+- To test without anyone else seeing it, upload with `me game upload --private` and invite your testers with `me game invite <id> <username>`; they sign in on the site to create a room, and phones join with the code as usual. To try a new version of a game that is already public without touching it, upload a copy with its own `id` (such as `<id>-test`) with `--private`, and delete it afterwards with `me game delete <id>-test`.
+- After an active upload the CLI prints `<server>/home/new/<id>`. For a private game, sign in on `/home/account` as its owner or an invitee first: anyone else gets "Dit spel bestaat niet." on that page. Create a room there ("Iedereen doet mee", then again with "TV" when the game offers it); join on phones with the code or the QR code; open the display from **Kamer** → **Open het gedeelde scherm**. One private window or device per seat: `sessionStorage` (where seat credentials live) is per tab and is copied by "duplicate", which makes both tabs the same seat (`session_replaced`).
 - Lock a player's phone during their turn: in a turn-based game they are skipped after 30 seconds.
-- `node tests/play.mjs https://miniengine.nl /tmp/shots` runs the same script there; it creates a real room.
+- `node tests/play.mjs https://miniengine.nl /tmp/shots` runs the same script there; it creates a real room. For a private game, create that room with the account token of its owner or an invitee as the third argument of `post()` (log in as in "Achievements" below); without it the server answers 404 `game_not_found`, as for an unknown game.
 
 ## Achievements
 
@@ -97,7 +97,7 @@ curl -s -H "Authorization: Bearer $DISPLAY_TOKEN" http://127.0.0.1:3170/api/v1/r
 | Symptom | Cause / fix |
 | --- | --- |
 | `me dev` or `me game upload` refuses the package | Read the reason (see above); the server applies the same rules. |
-| Game missing in `/home` on the server | Not uploaded, upload failed, or the game is turned off (`me game list`). |
+| Game missing in `/home` on the server | Not uploaded, upload failed, or the game is turned off (`me game list`), or it is private and this browser is not signed in as its owner or an invitee (`me game list`, `me game invites <id>`). |
 | A change works in `me dev` but not on the server | The server only has what you uploaded: bump `version`, upload, activate, then create a **new** room (rooms keep their version). |
 | A module 404s on the server only | An absolute import of your own module (`/games/<id>/assets/…`) loads the active version; import your own modules relatively (`./logic.js`). |
 | Page says to open it from the room launcher | Opened `/api/v1/games/...` or the HTML directly; there is no session in this tab. Use `/home`, `/room/CODE/<role>` or the `me dev` overview. |
@@ -125,3 +125,5 @@ curl -s -H "Authorization: Bearer $DISPLAY_TOKEN" http://127.0.0.1:3170/api/v1/r
 | An image from `data.json` 404s | `assets/…` resolved against the page URL (`/api/v1/games/…`). Resolve it from a module in `assets/` with `new URL(value.slice('assets/'.length), import.meta.url)` (host-runtime-patterns §13). |
 | A set kind with `"format": "image"` is refused by `me dev` or the upload | The CLI or the server is older than 0.8; image fields need both at 0.8+. |
 | Saving a set fails with `quota_set_media` / an upload with `quota_media`, `media_too_large`, `media_unsupported` | Limits in `manifest-and-settings.md`, "Image fields". The set editor shows the Dutch message at the field. |
+| Every upload fails with `quota_media`, even the first | Since engine 0.8.1 an account without a working dev key has no image space (`listMedia().limit_bytes` is 0). Get a dev key, or ask the admins with `requestMediaSpace` (or in the set editor); `listMedia().request` shows the answer. |
+| `requestMediaSpace` fails with 404 / `media_request_wait` | 404: the engine is older than 0.8.1. 429 `media_request_wait`: the account asked within 7 days; `request.next_request_at` says when it can again. |

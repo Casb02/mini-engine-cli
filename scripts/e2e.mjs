@@ -23,7 +23,7 @@ let step = 0;
 
 function me(args, { input, expectFail = false } = {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile(process.execPath, [bin, ...args, '--json'], { cwd: home, env, timeout: 60_000 }, (error, stdout, stderr) => {
+    const child = execFile(process.execPath, [bin, ...args, '--server', server, '--json'], { cwd: home, env, timeout: 60_000 }, (error, stdout, stderr) => {
       const code = error ? (error.code ?? 1) : 0;
       let data;
       try {
@@ -106,9 +106,15 @@ try {
   const room = await api('/api/v1/rooms', { method: 'POST', body: JSON.stringify({ game_id: slug }) });
   check(room.status === 201 || room.status === 200, `room ${room.data?.code} gemaakt met de geüploade game`, room.data);
   const html = await fetch(`${server}/api/v1/games/${slug}/host?room=${room.data.code}`).then(response => response.text());
-  check(html.includes(`"/releases/${slug}/0.1.0/assets/app.js"`), 'host-HTML verwijst naar de vastgepinde release');
-  const script = await fetch(`${server}/releases/${slug}/0.1.0/assets/app.js`);
+  // Since Mini Engine 0.9 a room loads its files from its own address; before, from the release.
+  const [major, minor] = String(health.data?.version).split('.').map(Number);
+  const roomFiles = major > 0 || minor >= 9;
+  const pinnedPath = roomFiles ? `/rooms/${room.data.code}/assets/app.js` : `/releases/${slug}/0.1.0/assets/app.js`;
+  check(html.includes(`"${pinnedPath}"`), `host-HTML verwijst naar de vastgepinde release (${pinnedPath})`);
+  const script = await fetch(`${server}${pinnedPath}`);
   check(script.status === 200 && (await script.text()).includes('MiniEngine'), 'release-asset wordt geserveerd');
+  const release = await fetch(`${server}/releases/${slug}/0.1.0/assets/app.js`);
+  check(release.status === 200, 'de release van een openbare game staat ook nog op /releases/', release.status);
 
   const list = await me(['game', 'list']);
   check(list.games.some(game => game.id === slug), 'me game list', list);
@@ -165,6 +171,72 @@ try {
   const deleted = await me(['game', 'delete', slug, '--yes']);
   check(deleted.deleted, 'me game delete --yes');
   check(!(await me(['game', 'list'])).games.some(game => game.id === slug), 'game is weg uit me game list');
+
+  // Private games (Mini Engine 0.9): only the owner and invited accounts see and start them.
+  const secret = `${slug}-prive`;
+  const friend = `${username}_v`;
+  await me(['game', 'new', secret]);
+  // "private" in manifest.json makes nothing private: the CLI stops before anything is sent.
+  const manifestPath = join(home, secret, 'manifest.json');
+  const manifestText = await readFile(manifestPath, 'utf8');
+  await writeFile(manifestPath, JSON.stringify({ ...JSON.parse(manifestText), private: true }));
+  const inManifest = await me(['game', 'upload', secret], { expectFail: true });
+  check(/private hoort niet in het manifest/.test(inManifest.error.message), 'private in manifest.json: de CLI stopt de upload', inManifest);
+  check(!(await me(['game', 'list'])).games.some(game => game.id === secret), 'en er is niets geüpload');
+  await writeFile(manifestPath, manifestText);
+  const hidden = await me(['game', 'upload', secret, '--private']);
+  check(hidden.game.private === true && hidden.release.active && hidden.first_upload, 'me game upload --private: eerste versie actief en privé', hidden);
+  check(!(await publicIds()).includes(secret), 'privégame staat niet in /api/v1/games zonder sessie');
+  const asUnknown = await api(`/api/v1/games/${secret}`);
+  const unknownId = await api(`/api/v1/games/${secret}-bestaat-niet`);
+  check(asUnknown.status === 404 && JSON.stringify(asUnknown.data) === JSON.stringify(unknownId.data), 'privégame antwoordt als een onbekend id', { asUnknown, unknownId });
+  const anonymousRoom = await api('/api/v1/rooms', { method: 'POST', body: JSON.stringify({ game_id: secret }) });
+  check(anonymousRoom.status === 404 && anonymousRoom.data.error.code === 'game_not_found', 'zonder sessie geen room met de privégame', anonymousRoom);
+  check((await me(['game', 'list'])).games.find(game => game.id === secret)?.private === true, 'me game list kent privé');
+
+  const password = `e2e-password-${suffix}`;
+  const player = await api('/api/v1/accounts/register', {
+    method: 'POST',
+    body: JSON.stringify({ username: friend, password, display_name: 'Vriend', email: `${friend}@example.com` }),
+  });
+  check(player.status === 201, `gewoon account ${friend} geregistreerd, zonder dev key`, player.data);
+  const invited = await me(['game', 'invite', secret, `@${friend}`]);
+  check(invited.private === true && invited.added.join() === friend, 'me game invite', invited);
+  const login = await api('/api/v1/accounts/login', { method: 'POST', body: JSON.stringify({ username: friend, password }) });
+  check(login.status === 200 && typeof login.data.token === 'string', 'genodigde logt in via de API', login.data);
+  const session = { authorization: `Bearer ${login.data.token}` };
+  const seen = (await api('/api/v1/games', { headers: session })).data.games.find(game => game.id === secret);
+  check(seen?.private === true, 'met de sessie van de genodigde staat de privégame in /api/v1/games', seen);
+  const friendRoom = await api('/api/v1/rooms', { method: 'POST', headers: session, body: JSON.stringify({ game_id: secret }) });
+  check(friendRoom.status === 201, `genodigde maakt room ${friendRoom.data?.code} met de privégame`, friendRoom.data);
+  // The room's pages load the game's files from the room's own address; without the code they
+  // answer like an unknown id, also while the room runs.
+  const roomPage = await fetch(`${server}/api/v1/games/${secret}/player?room=${friendRoom.data.code}`).then(response => response.text());
+  check(roomPage.includes(`/rooms/${friendRoom.data.code}/assets/app.js`), 'de room laadt de bestanden via zijn eigen adres');
+  const roomFile = await fetch(`${server}/rooms/${friendRoom.data.code}/assets/app.js`);
+  check(roomFile.status === 200, 'met de code laden de bestanden van de privégame', roomFile.status);
+  const guessed = await api(`/games/${secret}/assets/app.js`);
+  const unknownFile = await api(`/games/${secret}-bestaat-niet/assets/app.js`);
+  check(guessed.status === 404 && JSON.stringify(guessed.data) === JSON.stringify(unknownFile.data), 'zonder code antwoorden de bestanden als bij een onbekend id', { guessed, unknownFile });
+  const invites = await me(['game', 'invites', secret]);
+  check(invites.private === true && invites.invites.some(invite => invite.username === friend), 'me game invites toont het account', invites);
+
+  const opened = await me(['game', 'public', secret]);
+  check(opened.private === false && opened.invites === 1 && (await publicIds()).includes(secret), 'me game public: iedereen ziet hem', opened);
+  const closedAgain = await me(['game', 'private', secret]);
+  check(closedAgain.private === true && !(await publicIds()).includes(secret), 'me game private: weer weg uit de openbare lijst', closedAgain);
+  const uninvited = await me(['game', 'uninvite', secret, friend]);
+  check(uninvited.uninvited === true && uninvited.username === friend, 'me game uninvite', uninvited);
+  const gone = (await api('/api/v1/games', { headers: session })).data.games.some(game => game.id === secret);
+  check(!gone, 'na intrekken ziet de genodigde de privégame niet meer');
+  const twice = await me(['game', 'uninvite', secret, friend], { expectFail: true });
+  check(twice.error.code === 'invite_not_found', 'nog eens intrekken geeft invite_not_found', twice);
+  const playing = await api(`/api/v1/rooms/${friendRoom.data.code}/join`, { method: 'POST', body: JSON.stringify({ name: 'Pim' }) });
+  check(playing.status === 201 || playing.status === 200, 'een gast doet nog mee met de code, ook na intrekken', playing.data);
+  const ended = await api(`/api/v1/rooms/${friendRoom.data.code}`, { method: 'DELETE', headers: { authorization: `Bearer ${friendRoom.data.token}` } });
+  check(ended.status === 204, 'room van de genodigde gesloten', ended.data);
+  const removed = await me(['game', 'delete', secret, '--yes']);
+  check(removed.deleted, 'privégame opgeruimd met me game delete --yes');
 
   const tokens = await me(['admin', 'token', 'list']);
   check(tokens.tokens.some(token => token.id === created.id && token.last_used_at), 'me admin token list toont gebruik', tokens);

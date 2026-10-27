@@ -215,6 +215,13 @@ export function checkManifest(text, paths, contentOf = () => undefined) {
     throw new CliError('manifest.json: version moet met een letter of cijfer beginnen en mag daarna letters, cijfers en . + _ - bevatten (maximaal 64 tekens).');
   }
   if (manifest.runtime !== 'host') throw new CliError('manifest.json: alleen games met runtime "host" kunnen worden geüpload.');
+  // Privé belongs to the game on the server, not to the package: a manifest that says so would
+  // still go live for everyone, so the CLI stops before anything is sent.
+  if (Object.hasOwn(manifest, 'private')) {
+    throw new CliError('manifest.json: private hoort niet in het manifest; daarmee wordt een game niet privé.', {
+      hint: 'Haal private weg en upload met: me game upload --private (of later: me game private <id>)',
+    });
+  }
   checkHostModes(manifest);
   checkDeclarations(manifest);
   const required = ['host.html', 'player.html', ...(manifest.has_display ? ['display.html'] : [])];

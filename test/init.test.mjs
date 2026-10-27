@@ -176,6 +176,14 @@ describe('me doctor', () => {
     assert.deepEqual([version.ok, version.fix], [false, 'Verhoog version in manifest.json voor de volgende upload.']);
   });
 
+  test('from Mini Engine 0.9 the first upload can also be private', async () => {
+    fake.state.version = '0.9.0';
+    await me(['init', 'kwis', '--yes', '--template', 'quiz', '--no-skills']);
+    const result = await me(['doctor', '--json'], { cwd: join(home, 'kwis'), env: { MINIENGINE_TOKEN: key } });
+    const version = result.json().checks.find(check => check.id === 'version');
+    assert.deepEqual([version.ok, version.title], [true, 'kwis is nog niet geüpload; de eerste upload staat meteen live, of alleen voor jou met me game upload --private']);
+  });
+
   test('broken: an old CLI, no server, no dev key, missing skills and a broken game, each with one fix', async () => {
     const port = await closedPort();
     await me(['game', 'new', 'kapot']);

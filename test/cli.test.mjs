@@ -91,7 +91,7 @@ describe('help and usage', () => {
     assert.equal(group.code, 0);
     assert.match(group.stdout, /Gebruik: me game <commando>/);
     const command = await runMe(['game', 'upload', '--help'], { home });
-    assert.match(command.stdout, /Gebruik: me game upload \[map\] \[--activate\] \[--dry-run\]/);
+    assert.match(command.stdout, /Gebruik: me game upload \[map\] \[--activate\] \[--private\] \[--dry-run\]/);
     assert.match(command.stdout, /\.meignore/);
     const viaHelp = await runMe(['help', 'admin', 'token', 'create'], { home });
     assert.match(viaHelp.stdout, /--expires DAGEN/);
@@ -102,6 +102,22 @@ describe('help and usage', () => {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
     const vendored = JSON.parse(await readFile(new URL('../vendor/VENDOR.json', import.meta.url), 'utf8'));
     assert.deepEqual((await runMe(['--version', '--json'], { home })).json(), { version: pkg.version, sdk: vendored.sdk.version });
+  });
+
+  // Each CLI release names the SDK its skills and templates must come from: CLI 0.9 tells you to
+  // test with --private, so it may not ship the older advice of a public test copy.
+  test('the vendored SDK is at least the version this CLI release needs', async () => {
+    const parts = version => version.split(/[.-]/).slice(0, 3).map(Number);
+    const older = (a, b) => {
+      const first = a.findIndex((part, i) => part !== b[i]);
+      return first !== -1 && a[first] < b[first];
+    };
+    const cli = parts(JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version);
+    const sdk = parts(JSON.parse(await readFile(new URL('../vendor/VENDOR.json', import.meta.url), 'utf8')).sdk.version);
+    for (const [release, needs] of [[[0, 9, 0], [0, 7, 2]]]) {
+      if (older(cli, release)) continue;
+      assert.ok(!older(sdk, needs), `CLI ${cli.join('.')} vendors SDK ${sdk.join('.')}; it needs ${needs.join('.')} or newer. Run npm run sync-vendor -- --sdk ../mini-engine-sdk.`);
+    }
   });
 
   test('unknown commands and options exit 2 with a hint', async () => {
@@ -128,7 +144,7 @@ describe('errors', () => {
   test('--json errors have the server envelope on stdout', async () => {
     const result = await authed(['game', 'versions', 'nope', '--json']);
     assert.equal(result.code, 1);
-    assert.deepEqual(result.json(), { error: { code: 'game_not_found', message: 'Deze game bestaat niet.', status: 404 } });
+    assert.deepEqual(result.json(), { error: { code: 'game_not_found', message: 'Je hebt geen game met dit id.', status: 404 } });
     assert.equal(result.stderr, '');
   });
 
@@ -408,7 +424,7 @@ describe('game', () => {
     assert.match(empty.stdout, /Je hebt nog geen games/);
     await uploaded(['0.1.0', '0.2.0']);
     const list = await authed(['game', 'list']);
-    assert.match(list.stdout, /ID\s+TITEL\s+ACTIEF\s+STATUS\s+VERSIES\nkwis\s+Kwis\s+0\.1\.0\s+aan\s+2/);
+    assert.match(list.stdout, /ID\s+TITEL\s+ACTIEF\s+STATUS\s+PRIVÉ\s+VERSIES\nkwis\s+Kwis\s+0\.1\.0\s+aan\s+-\s+2/, 'a server before 0.9 has no private field');
     const json = (await authed(['game', 'list', '--json'])).json();
     assert.equal(json.games[0].id, 'kwis');
     assert.equal(json.server, fake.url);
@@ -477,6 +493,331 @@ describe('game', () => {
     const deleted = await authed(['game', 'delete', 'kwis', '--yes', '--json']);
     assert.deepEqual(deleted.json(), { id: 'kwis', deleted: true });
     assert.equal(fake.game('kwis'), undefined);
+  });
+});
+
+describe('private games', () => {
+  // Cas owns the games; Dani, Sander, Kevin and Pim are accounts without a dev key.
+  beforeEach(() => {
+    fake.state.version = '0.9.0';
+    fake.addAccount('cas');
+    key = fake.issueToken('cas').token;
+    for (const name of ['dani', 'kevin', 'pim']) fake.addAccount(name);
+  });
+
+  const unsupported = version => new RegExp(`^Fout: http://127\\.0\\.0\\.1:\\d+ draait Mini Engine ${version.replaceAll('.', '\\.')}\\. Privégames en uitnodigingen werken vanaf Mini Engine 0\\.9\\.`);
+  const devCalls = () => fake.state.requests.filter(r => r.path.startsWith('/api/v1/dev/')).length;
+
+  test('game --help names the new commands; upload --help explains --private', async () => {
+    const group = await runMe(['game', '--help'], { home });
+    assert.equal(group.code, 0);
+    for (const line of [
+      /game private <id> +Game privé maken: alleen jij en wie je uitnodigt, kunnen hem starten/,
+      /game public <id> +Game weer openbaar maken voor iedereen op de server/,
+      /game invite <id> <gebruikersnaam>\.\.\. +Accounts uitnodigen die je privégame mogen starten/,
+      /game uninvite <id> <gebruikersnaam> +Uitnodiging intrekken/,
+      /game invites <id> +Wie je voor een game hebt uitgenodigd/,
+    ]) assert.match(group.stdout, line);
+    const upload = await runMe(['game', 'upload', '--help'], { home });
+    assert.match(upload.stdout, /--private +De game privé maken \(vanaf Mini Engine 0\.9\): alleen jij en wie je uitnodigt, kunnen hem starten/);
+    assert.match(upload.stdout, /Met --private is de game privé voordat deze versie live kan gaan; ook een nieuwe game is dan nooit voor iedereen zichtbaar\./);
+    assert.match(upload.stdout, /Zet private niet in manifest\.json: daarmee wordt een game niet privé, dus de CLI stopt dan\./);
+    assert.match(upload.stdout, /Voorbeelden\n(?: {2}.*\n)* {2}me game upload --private\n/);
+    const invite = await runMe(['game', 'invite', '--help'], { home });
+    assert.match(invite.stdout, /Uitgenodigde accounts zien je privégame op de site als ze zijn ingelogd en kunnen er een room mee maken, ook zonder dev key\. Hoogstens 50 per game\. Een @ voor de naam mag\./);
+    assert.match((await runMe(['--help'], { home })).stdout, /game invites <id>/);
+  });
+
+  test('upload --private makes even a new game private before it can go live', async () => {
+    const dir = await newGame();
+    const result = await authed(['game', 'upload', 'kwis', '--private']);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, '');
+    const post = fake.state.requests.find(r => r.method === 'POST');
+    assert.equal(post.body.private, true);
+    const paths = fake.state.requests.map(r => `${r.method} ${r.path}`);
+    assert.ok(paths.indexOf('GET /api/health') < paths.indexOf('POST /api/v1/dev/games/kwis/versions'), 'the version check comes first');
+    assert.equal(fake.game('kwis').private, true);
+    assert.match(
+      result.stdout,
+      /\n {2}Actief {5}ja\n {2}Privé {6}ja\n\nDit is de eerste versie van kwis\. Die is meteen actief, maar privé: alleen jij ziet hem op de site als je bent ingelogd\. Meedoen kan iedereen met de code\.\nVrienden uitnodigen: me game invite kwis <gebruikersnaam>\nVolgende versies gaan pas live met me game upload --activate\.\n\nSpelen: http:\/\/127\.0\.0\.1:\d+\/home\/new\/kwis\n$/,
+    );
+
+    await bump(dir, '0.2.0');
+    const later = await authed(['game', 'upload', 'kwis', '--activate', '--json']);
+    assert.equal(later.code, 0, later.stdout);
+    assert.equal(fake.state.requests.at(-1).body.private, undefined, 'without --private nothing about privé is sent');
+    assert.equal(later.json().game.private, true, 'an upload never makes a private game public');
+    await bump(dir, '0.3.0');
+    const text = await authed(['game', 'upload', 'kwis']);
+    assert.match(text.stdout, /\n {2}Actief {5}nee \(actief is 0\.2\.0\)\n {2}Privé {6}ja\n/);
+  });
+
+  test('a first public upload suggests making it private', async () => {
+    const dir = await newGame();
+    const result = await authed(['game', 'upload', 'kwis']);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /\n {2}Actief {5}ja\n\nDit is de eerste versie van kwis, dus die staat meteen live: iedereen op http:\/\/127\.0\.0\.1:\d+ kan hem spelen\.\nAlleen voor jou en je vrienden\? Maak hem privé: me game private kwis\nVolgende versies gaan pas live met me game upload --activate\.\n\nSpelen: /,
+    );
+    assert.equal(fake.game('kwis').private, false);
+    await bump(dir, '0.2.0');
+    assert.doesNotMatch((await authed(['game', 'upload', 'kwis', '--activate'])).stdout, /Privé|privé/);
+
+    fake.state.version = '0.8.1';
+    await newGame('quiz');
+    const old = await authed(['game', 'upload', 'quiz']);
+    assert.equal(old.code, 0, old.stderr);
+    assert.doesNotMatch(old.stdout, /me game private/, 'no hint a server before 0.9 cannot follow');
+  });
+
+  test('upload --dry-run --private says so and sends nothing', async () => {
+    await newGame();
+    const before = fake.state.requests.length;
+    const result = await me(['game', 'upload', 'kwis', '--dry-run', '--private']);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /\n\nMet --private wordt kwis privé\.\nNiets geüpload \(--dry-run\)\.\n$/);
+    assert.equal((await me(['game', 'upload', 'kwis', '--dry-run', '--private', '--json'])).json().private, true);
+    assert.doesNotMatch((await me(['game', 'upload', 'kwis', '--dry-run'])).stdout, /--private/);
+    assert.equal(fake.state.requests.length, before);
+  });
+
+  test('a server before 0.9 stops every private command before anything is sent', async () => {
+    fake.state.version = '0.8.1';
+    await newGame();
+    const upload = await authed(['game', 'upload', 'kwis', '--private']);
+    assert.equal(upload.code, 1);
+    assert.match(upload.stderr, unsupported('0.8.1'));
+    assert.match(upload.stderr, /Mini Engine 0\.9\. Er is niets geüpload\.\n$/);
+    assert.equal(fake.state.games.size, 0);
+    assert.equal(devCalls(), 0);
+    const json = await authed(['game', 'upload', 'kwis', '--private', '--json']);
+    assert.equal(json.code, 1);
+    assert.equal(json.json().error.code, 'unsupported');
+
+    await authed(['game', 'upload', 'kwis']);
+    for (const args of [['private', 'kwis'], ['public', 'kwis'], ['invite', 'kwis', 'dani'], ['uninvite', 'kwis', 'dani'], ['invites', 'kwis']]) {
+      const before = devCalls();
+      const result = await authed(['game', ...args]);
+      assert.equal(result.code, 1, args.join(' '));
+      assert.match(result.stderr, unsupported('0.8.1'));
+      assert.match(result.stderr, /Mini Engine 0\.9\.\n$/);
+      assert.equal(devCalls(), before, args.join(' '));
+      assert.equal((await authed(['game', ...args, '--json'])).json().error.code, 'unsupported');
+    }
+    assert.equal(fake.game('kwis').private, false);
+  });
+
+  test('without a known server version the request goes ahead; an old server refuses it with a hint', async () => {
+    fake.state.version = null;
+    await newGame();
+    const upload = await authed(['game', 'upload', 'kwis', '--private']);
+    assert.equal(upload.code, 1);
+    assert.match(upload.stderr, /^Fout: Stuur geldige JSON met de verwachte velden en Content-Type application\/json\.\nDraait http:\/\/127\.0\.0\.1:\d+ wel Mini Engine 0\.9 of nieuwer\? Privégames en uitnodigingen werken pas vanaf die versie\. Er is niets geüpload\.\n$/);
+    assert.equal(fake.state.games.size, 0);
+    await authed(['game', 'upload', 'kwis']);
+    const put = await authed(['game', 'private', 'kwis']);
+    assert.equal(put.code, 1);
+    assert.match(put.stderr, /\nDraait http:\/\/127\.0\.0\.1:\d+ wel Mini Engine 0\.9 of nieuwer\? Privégames en uitnodigingen werken pas vanaf die versie\.\n$/);
+    const invite = await authed(['game', 'invite', 'kwis', 'dani', '--json']);
+    assert.equal(invite.code, 1);
+    assert.equal(invite.json().error.code, 'not_found');
+    assert.match(invite.json().error.hint, /wel Mini Engine 0\.9 of nieuwer\?/);
+  });
+
+  test('private in manifest.json stops the upload before anything is sent', async () => {
+    const dir = await newGame();
+    for (const value of [true, false]) {
+      await declare(dir, { private: value });
+      for (const args of [['game', 'upload', 'kwis'], ['game', 'upload', 'kwis', '--private'], ['game', 'upload', 'kwis', '--dry-run']]) {
+        const before = fake.state.requests.length;
+        const result = await authed(args);
+        assert.equal(result.code, 1, args.join(' '));
+        assert.equal(
+          result.stderr,
+          'Fout: manifest.json: private hoort niet in het manifest; daarmee wordt een game niet privé.\nHaal private weg en upload met: me game upload --private (of later: me game private <id>)\n',
+        );
+        assert.equal(fake.state.requests.length, before, `${args.join(' ')} sends nothing`);
+      }
+    }
+    assert.equal(fake.state.games.size, 0);
+    const doctor = await authed(['doctor', 'kwis']);
+    assert.match(doctor.stdout + doctor.stderr, /private hoort niet in het manifest/);
+  });
+
+  test('private and public say when nothing changed, and when a game leaves the featured games', async () => {
+    await uploaded(['0.1.0']);
+    fake.feature(['kwis']);
+    const featured = await authed(['game', 'private', 'kwis']);
+    assert.equal(featured.code, 0, featured.stderr);
+    assert.equal(
+      featured.stdout,
+      'kwis is nu privé. Alleen jij kunt er een room mee maken; meedoen kan iedereen met de code.\nHij staat niet meer bij de uitgelichte games: een privégame kan niet uitgelicht worden.\nIemand uitnodigen: me game invite kwis <gebruikersnaam>\n',
+    );
+    assert.deepEqual(fake.state.featured, []);
+    const puts = () => fake.state.requests.filter(r => r.method === 'PUT').length;
+    const before = puts();
+    const again = await authed(['game', 'private', 'kwis']);
+    assert.equal(again.stdout, 'kwis was al privé. Alleen jij kunt er een room mee maken; meedoen kan iedereen met de code.\nIemand uitnodigen: me game invite kwis <gebruikersnaam>\n');
+    assert.equal(puts(), before, 'nothing to change, nothing sent');
+    assert.equal((await authed(['game', 'private', 'kwis', '--json'])).json().private, true);
+    await authed(['game', 'public', 'kwis']);
+    const open = await authed(['game', 'public', 'kwis']);
+    assert.equal(open.stdout, `kwis was al openbaar: iedereen op ${fake.url} kan hem zien en er een room mee maken.\n`);
+    // A game that was not featured gets no such line.
+    assert.doesNotMatch((await authed(['game', 'private', 'kwis'])).stdout, /uitgelicht/);
+  });
+
+  test('private and public, with 0, 1 and more invites', async () => {
+    await uploaded(['0.1.0']);
+    const zero = await authed(['game', 'private', 'kwis']);
+    assert.equal(zero.code, 0, zero.stderr);
+    assert.equal(zero.stdout, 'kwis is nu privé. Alleen jij kunt er een room mee maken; meedoen kan iedereen met de code.\nIemand uitnodigen: me game invite kwis <gebruikersnaam>\n');
+    assert.deepEqual([fake.state.requests.at(-1).method, fake.state.requests.at(-1).path, fake.state.requests.at(-1).body], ['PUT', '/api/v1/dev/games/kwis', { private: true }]);
+    const open = await authed(['game', 'public', 'kwis']);
+    assert.equal(open.stdout, `kwis is nu openbaar: iedereen op ${fake.url} kan hem zien en er een room mee maken.\n`);
+    assert.deepEqual(fake.state.requests.at(-1).body, { private: false });
+
+    await authed(['game', 'invite', 'kwis', 'dani']);
+    assert.equal((await authed(['game', 'private', 'kwis'])).stdout, 'kwis is nu privé. Alleen jij en 1 uitgenodigd account kunnen er een room mee maken; meedoen kan iedereen met de code.\n');
+    assert.equal((await authed(['game', 'public', 'kwis'])).stdout, `kwis is nu openbaar: iedereen op ${fake.url} kan hem zien en er een room mee maken.\nJe uitnodiging blijft bewaard en telt weer als je hem privé maakt.\n`);
+    await authed(['game', 'invite', 'kwis', 'sander']);
+    assert.equal((await authed(['game', 'private', 'kwis'])).stdout, 'kwis is nu privé. Alleen jij en 2 uitgenodigde accounts kunnen er een room mee maken; meedoen kan iedereen met de code.\n');
+    assert.equal((await authed(['game', 'public', 'kwis'])).stdout, `kwis is nu openbaar: iedereen op ${fake.url} kan hem zien en er een room mee maken.\nJe 2 uitnodigingen blijven bewaard en tellen weer als je hem privé maakt.\n`);
+
+    const json = await authed(['game', 'private', 'kwis', '--json']);
+    assert.deepEqual([json.json().id, json.json().private, json.json().invites], ['kwis', true, 2]);
+    await authed(['game', 'disable', 'kwis']);
+    assert.match((await authed(['game', 'private', 'kwis'])).stdout, /meedoen kan iedereen met de code\.\nkwis staat uit\. Aanzetten: me game enable kwis\n$/);
+    assert.match((await authed(['game', 'public', 'kwis'])).stdout, /tellen weer als je hem privé maakt\.\nkwis staat uit\. Aanzetten: me game enable kwis\n$/);
+    fake.game('kwis').blocked = true;
+    assert.match((await authed(['game', 'private', 'kwis'])).stdout, /\nkwis is geblokkeerd door de beheerder van de server\.\n$/);
+
+    const unknown = await authed(['game', 'private', 'nope']);
+    assert.equal(unknown.code, 1);
+    assert.equal(unknown.stderr, 'Fout: Je hebt geen game met dit id.\n');
+  });
+
+  test('invite drops the @ and doubles and says who was already invited', async () => {
+    await uploaded(['0.1.0']);
+    await authed(['game', 'private', 'kwis']);
+    const first = await authed(['game', 'invite', 'kwis', '@dani', 'sander', 'dani']);
+    assert.equal(first.code, 0, first.stderr);
+    assert.deepEqual([fake.state.requests.at(-1).method, fake.state.requests.at(-1).path, fake.state.requests.at(-1).body], ['POST', '/api/v1/dev/games/kwis/invites', { usernames: ['dani', 'sander'] }]);
+    assert.equal(first.stdout, `Uitgenodigd voor kwis: @dani en @sander.\nWie is uitgenodigd, ziet kwis na het inloggen op ${fake.url}/home/new/kwis\n`);
+    const again = await authed(['game', 'invite', 'kwis', 'Dani', ' @SANDER ']);
+    assert.deepEqual(fake.state.requests.at(-1).body, { usernames: ['dani', 'sander'] });
+    assert.equal(again.stdout, `@dani en @sander waren al uitgenodigd.\nWie is uitgenodigd, ziet kwis na het inloggen op ${fake.url}/home/new/kwis\n`);
+    const mixed = await authed(['game', 'invite', 'kwis', 'kevin', 'pim', 'dani']);
+    assert.equal(mixed.stdout, `Uitgenodigd voor kwis: @kevin en @pim.\n@dani was al uitgenodigd.\nWie is uitgenodigd, ziet kwis na het inloggen op ${fake.url}/home/new/kwis\n`);
+    fake.addAccount('anouk');
+    fake.addAccount('joost');
+    const json = await authed(['game', 'invite', 'kwis', 'anouk', 'joost', 'Kevin', '--json']);
+    assert.equal(json.code, 0, json.stdout);
+    assert.deepEqual(json.json().added, ['anouk', 'joost']);
+    assert.equal(json.json().private, true);
+    assert.deepEqual(json.json().invites.map(invite => invite.username), ['anouk', 'dani', 'joost', 'kevin', 'pim', 'sander']);
+    assert.match((await authed(['game', 'invite', 'kwis', 'anouk', 'dani', 'joost'])).stdout, /^@anouk, @dani en @joost waren al uitgenodigd\.\n/);
+
+    await authed(['game', 'public', 'kwis']);
+    fake.addAccount('femke');
+    const open = await authed(['game', 'invite', 'kwis', 'femke']);
+    assert.equal(open.stdout, 'Uitgenodigd voor kwis: @femke.\nkwis is openbaar, dus iedereen kan hem al starten. De uitnodiging telt zodra je hem privé maakt: me game private kwis\n');
+  });
+
+  test('invite errors: unknown accounts, your own name, the cap and wrong use', async () => {
+    await uploaded(['0.1.0']);
+    const unknown = await authed(['game', 'invite', 'kwis', 'dani', 'niemand']);
+    assert.equal(unknown.code, 1);
+    assert.equal(unknown.stderr, 'Fout: Er is geen account met de gebruikersnaam niemand.\n');
+    assert.equal(fake.game('kwis').invites.length, 0, 'all or nothing');
+    assert.deepEqual((await authed(['game', 'invite', 'kwis', 'niemand', '--json'])).json(), { error: { code: 'account_not_found', message: 'Er is geen account met de gebruikersnaam niemand.', status: 404 } });
+    const own = await authed(['game', 'invite', 'kwis', '@cas']);
+    assert.equal(own.code, 1);
+    assert.equal(own.stderr, 'Fout: Dit is je eigen game; die kun je altijd starten.\n');
+    const other = await authed(['game', 'invite', 'nope', 'dani']);
+    assert.equal(other.stderr, 'Fout: Je hebt geen game met dit id.\n');
+
+    const players = Array.from({ length: 50 }, (_, i) => `speler${i}`);
+    players.forEach(name => fake.addAccount(name));
+    const fifty = await authed(['game', 'invite', 'kwis', ...players]);
+    assert.equal(fifty.code, 0, fifty.stderr);
+    assert.equal(fake.game('kwis').invites.length, 50);
+    const full = await authed(['game', 'invite', 'kwis', 'dani', '--json']);
+    assert.equal(full.code, 1);
+    assert.deepEqual(full.json().error, { code: 'quota_invites', message: 'Een game heeft hoogstens 50 uitnodigingen, en deze heeft er al 50. Trek er eerst een in.', status: 409 });
+    assert.match((await authed(['game', 'invite', 'kwis', 'dani'])).stderr, /^Fout: Een game heeft hoogstens 50 uitnodigingen, en deze heeft er al 50\. Trek er eerst een in\.\n$/);
+
+    const before = fake.state.requests.length;
+    const many = await authed(['game', 'invite', 'kwis', ...players, 'dani']);
+    assert.equal(many.code, 2);
+    assert.match(many.stderr, /Te veel argumenten\.\nGebruik: me game invite <id> <gebruikersnaam>\.\.\./);
+    const none = await authed(['game', 'invite', 'kwis']);
+    assert.equal(none.code, 2);
+    assert.match(none.stderr, /Er ontbreekt een argument\./);
+    const empty = await authed(['game', 'invite', 'kwis', 'dani', '@']);
+    assert.equal(empty.code, 2);
+    assert.match(empty.stderr, /^Fout: Een gebruikersnaam is leeg\.\nGeef een gebruikersnaam, met of zonder @: dani of @dani\.\n$/);
+    assert.equal(fake.state.requests.length, before, 'wrong use sends nothing');
+    for (const args of [['private', 'kwis'], ['invite', 'kwis', 'dani'], ['invites', 'kwis'], ['upload', 'kwis', '--private']]) {
+      const out = await me(['game', ...args]);
+      assert.equal(out.code, 1, args.join(' '));
+      assert.match(out.stderr, /^Fout: Niet ingelogd op http:\/\/127\.0\.0\.1:\d+\.\nLog in met: me auth\n$/, args.join(' '));
+    }
+  });
+
+  test('invites lists who is invited; uninvite takes one back', async () => {
+    await uploaded(['0.1.0']);
+    const none = await authed(['game', 'invites', 'kwis']);
+    assert.equal(none.code, 0, none.stderr);
+    assert.equal(none.stdout, 'Nog niemand uitgenodigd voor kwis.\nUitnodigen: me game invite kwis <gebruikersnaam>\n');
+    assert.deepEqual((await authed(['game', 'invites', 'kwis', '--json'])).json(), { private: false, invites: [] });
+
+    await authed(['game', 'invite', 'kwis', 'sander', 'dani']);
+    const open = await authed(['game', 'invites', 'kwis']);
+    assert.match(open.stdout, /^kwis is openbaar\. Deze uitnodigingen tellen zodra je hem privé maakt:\n\nGEBRUIKERSNAAM\s+NAAM\s+UITGENODIGD\ndani\s+Dani\s+\d{4}-\d\d-\d\d \d\d:\d\d\nsander\s+Sander\s+\d{4}-\d\d-\d\d \d\d:\d\d\n$/);
+    await authed(['game', 'private', 'kwis']);
+    const closed = await authed(['game', 'invites', 'kwis']);
+    assert.match(closed.stdout, /^kwis is privé\. Deze accounts kunnen hem starten:\n\nGEBRUIKERSNAAM\s+NAAM\s+UITGENODIGD\ndani\s/);
+    assert.equal(fake.state.requests.at(-1).method, 'GET');
+    assert.equal(fake.state.requests.at(-1).path, '/api/v1/dev/games/kwis/invites');
+    const json = (await authed(['game', 'invites', 'kwis', '--json'])).json();
+    assert.equal(json.private, true);
+    assert.deepEqual(json.invites.map(invite => [invite.username, invite.display_name, typeof invite.invited_at]), [['dani', 'Dani', 'number'], ['sander', 'Sander', 'number']]);
+
+    const gone = await authed(['game', 'uninvite', 'kwis', '@Dani']);
+    assert.equal(gone.code, 0, gone.stderr);
+    assert.equal(gone.stdout, '@dani is niet meer uitgenodigd voor kwis. Rooms die al lopen, spelen door.\n');
+    assert.deepEqual([fake.state.requests.at(-1).method, fake.state.requests.at(-1).path], ['DELETE', '/api/v1/dev/games/kwis/invites/dani']);
+    assert.deepEqual((await authed(['game', 'uninvite', 'kwis', 'sander', '--json'])).json(), { id: 'kwis', username: 'sander', uninvited: true });
+    assert.match((await authed(['game', 'invites', 'kwis'])).stdout, /^Nog niemand uitgenodigd voor kwis\./);
+
+    const again = await authed(['game', 'uninvite', 'kwis', 'dani']);
+    assert.equal(again.code, 1);
+    assert.equal(again.stderr, 'Fout: @dani is niet uitgenodigd voor deze game.\n');
+    assert.equal((await authed(['game', 'uninvite', 'kwis', 'dani', '--json'])).json().error.code, 'invite_not_found');
+    const unknown = await authed(['game', 'uninvite', 'kwis', 'niemand']);
+    assert.equal(unknown.stderr, 'Fout: Er is geen account met de gebruikersnaam niemand.\n');
+    assert.equal((await authed(['game', 'invites', 'nope'])).stderr, 'Fout: Je hebt geen game met dit id.\n');
+    assert.equal((await authed(['game', 'uninvite', 'kwis'])).code, 2);
+  });
+
+  test('list, versions and admin games show which games are private', async () => {
+    await uploaded(['0.1.0']);
+    await uploaded(['0.1.0'], 'quiz');
+    await authed(['game', 'private', 'kwis']);
+    const list = await authed(['game', 'list']);
+    assert.equal(list.code, 0, list.stderr);
+    assert.match(list.stdout, /^ID\s+TITEL\s+ACTIEF\s+STATUS\s+PRIVÉ\s+VERSIES\nkwis\s+Kwis\s+0\.1\.0\s+aan\s+ja\s+1\nquiz\s+Quiz\s+0\.1\.0\s+aan\s+nee\s+1\n$/);
+    assert.deepEqual((await authed(['game', 'list', '--json'])).json().games.map(game => [game.id, game.private, game.invites]), [['kwis', true, 0], ['quiz', false, 0]]);
+    assert.match((await authed(['game', 'versions', 'kwis'])).stdout, /^Kwis \(kwis\) · aan, privé\n\n/);
+    assert.match((await authed(['game', 'versions', 'quiz'])).stdout, /^Quiz \(quiz\) · aan\n\n/);
+    await authed(['game', 'disable', 'kwis']);
+    assert.match((await authed(['game', 'versions', 'kwis'])).stdout, /^Kwis \(kwis\) · uit, privé\n\n/);
+    const games = await admin(['admin', 'games']);
+    assert.equal(games.code, 0, games.stderr);
+    assert.match(games.stdout, /^ID\s+EIGENAAR\s+ACTIEF\s+STATUS\s+PRIVÉ\s+VERSIES\nkwis\s+cas\s+0\.1\.0\s+uit\s+ja\s+1\nquiz\s+cas\s+0\.1\.0\s+aan\s+nee\s+1\n$/);
   });
 });
 
@@ -602,7 +943,7 @@ describe('admin', () => {
   test('games, block and unblock', async () => {
     await uploaded(['0.1.0']);
     const games = await admin(['admin', 'games']);
-    assert.match(games.stdout, /kwis\s+sander\s+0\.1\.0\s+aan\s+1/);
+    assert.match(games.stdout, /ID\s+EIGENAAR\s+ACTIEF\s+STATUS\s+PRIVÉ\s+VERSIES\nkwis\s+sander\s+0\.1\.0\s+aan\s+-\s+1/);
     const block = await admin(['admin', 'game', 'block', 'kwis', '--json']);
     assert.equal(block.json().blocked, true);
     assert.deepEqual(fake.state.requests.at(-1).body, { enabled: false });

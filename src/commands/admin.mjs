@@ -1,7 +1,7 @@
 import { enc, request } from '../api.mjs';
 import { updateConfig } from '../config.mjs';
 import { CliError, usageError } from '../errors.mjs';
-import { formatDate, gameStatus, maskToken, table } from '../format.mjs';
+import { formatDate, gameStatus, maskToken, privateCell, table } from '../format.mjs';
 
 function tokenState(token) {
   if (token.revoked_at) return 'ingetrokken';
@@ -309,12 +309,13 @@ export const adminCommands = [
     path: ['admin', 'games'],
     usage: 'admin games',
     summary: 'Alle geüploade games met eigenaar',
+    description: 'PRIVÉ is ja voor een game die alleen de eigenaar en wie die uitnodigt kunnen starten (vanaf Mini Engine 0.9). Ook een privégame kun je blokkeren.',
     async run(ctx) {
       const { games } = await ctx.admin('/games');
       const text = games.length
         ? table(
-            ['ID', 'EIGENAAR', 'ACTIEF', 'STATUS', 'VERSIES'],
-            games.map(game => [game.id, ownerName(game.owner), game.active_version ?? '-', gameStatus(game), game.versions?.length ?? 0]),
+            ['ID', 'EIGENAAR', 'ACTIEF', 'STATUS', 'PRIVÉ', 'VERSIES'],
+            games.map(game => [game.id, ownerName(game.owner), game.active_version ?? '-', gameStatus(game), privateCell(game), game.versions?.length ?? 0]),
           )
         : 'Er zijn nog geen geüploade games.';
       return { data: { games }, text };

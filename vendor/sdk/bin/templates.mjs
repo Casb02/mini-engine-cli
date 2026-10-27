@@ -279,7 +279,7 @@ Controleren:
 
 ## Publiceren
 
-Met een dev key van wie de server beheert: \`me auth\`, dan \`me game upload\`. De eerste upload van een nieuwe game staat meteen live. Verhoog daarna \`version\` in \`manifest.json\` en upload met \`me game upload --activate\`.
+Met een dev key van wie de server beheert: \`me auth\`, dan \`me game upload\`. De eerste upload van een nieuwe game staat meteen live, voor iedereen op die server. Wil je hem eerst alleen zelf of met vrienden spelen, upload dan met \`me game upload --private\` en nodig ze uit met \`me game invite ${o.slug} <gebruikersnaam>\` (vanaf Mini Engine 0.9). Verhoog daarna \`version\` in \`manifest.json\` en upload met \`me game upload --activate\`.
 
 \`jsconfig.json\` en \`types/\` zijn alleen voor je editor. \`.meignore\` houdt ze buiten de upload, en \`tests/\` gaat nooit mee.
 `;
@@ -315,7 +315,7 @@ Check it:
 
 ## Publish
 
-With a dev key from whoever runs the server: \`me auth\`, then \`me game upload\`. The first upload of a new game is live at once. After that, raise \`version\` in \`manifest.json\` and upload with \`me game upload --activate\`.
+With a dev key from whoever runs the server: \`me auth\`, then \`me game upload\`. The first upload of a new game is live at once, for everyone on that server. To play it on your own or with friends first, upload with \`me game upload --private\` and invite them with \`me game invite ${o.slug} <username>\` (Mini Engine 0.9+). After that, raise \`version\` in \`manifest.json\` and upload with \`me game upload --activate\`.
 
 \`jsconfig.json\` and \`types/\` are for your editor only. \`.meignore\` keeps them out of the upload, and \`tests/\` is never uploaded.
 `;
