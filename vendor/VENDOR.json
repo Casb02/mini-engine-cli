@@ -2,8 +2,8 @@
   "sdk": {
     "name": "@casb02/mini-engine-sdk",
     "version": "0.7.2",
-    "commit": "3de55b9af1d5db46a4219d04a3d0fa71c2260748",
-    "dirty": true
+    "commit": "815d153633a880f42d883e7ec1e0da0e665c242a",
+    "dirty": false
   },
   "files": {
     "sdk/bin/create-mini-game.mjs": "eec088eed821fb88d7e44cf0f9ed3a0c3a17555f7a6e72a02cd9a82f53045bdf",
