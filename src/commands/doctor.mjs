@@ -8,6 +8,7 @@ import { dataImageProblems } from '../dev/schema.mjs';
 import { packGame } from '../pack.mjs';
 import { skillStatus } from '../skills.mjs';
 import { PACKAGE } from '../vendor.mjs';
+import { olderThan } from './game.mjs';
 import { skillTarget } from './skill.mjs';
 
 const LATEST_URL = 'https://raw.githubusercontent.com/Casb02/mini-engine-cli/main/package.json';
@@ -89,7 +90,9 @@ async function gameChecks(ctx, dir, reach) {
         checks.push(pass('version', `Versie ${pack.version} is nieuw op ${reach.server}`));
       }
     } catch (error) {
-      if (error.status === 404) checks.push(pass('version', `${pack.id} is nog niet geüpload; de eerste upload staat meteen live`));
+      // Private uploads need Mini Engine 0.9; an unknown version gets the benefit of the doubt.
+      const privately = olderThan(reach.version, 0, 9) ? '' : ', of alleen voor jou met me game upload --private';
+      if (error.status === 404) checks.push(pass('version', `${pack.id} is nog niet geüpload; de eerste upload staat meteen live${privately}`));
       else if (error.status === 403) checks.push(fail('version', `Het id ${pack.id} hoort op ${reach.server} bij iemand anders.`, 'Kies een ander id in manifest.json.'));
       else checks.push(skip('version', `Versies op de server niet bekeken: ${error.message}`));
     }

@@ -9,7 +9,7 @@ Met de Mini Engine CLI maak, test en publiceer je je eigen partygames voor Mini 
 
 Documentatie: [docs.miniengine.nl](https://docs.miniengine.nl/publiceren/cli.html). De routes die de CLI gebruikt, staan bij [API: ontwikkelaars](https://docs.miniengine.nl/api/ontwikkelaars.html).
 
-De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig, afbeeldingen in eigen sets Mini Engine 0.8, en de ruimte voor afbeeldingen per account beheren Mini Engine 0.8.1.
+De commando's heten `me` en `miniengine` (hetzelfde programma). Werkt met Mini Engine 0.3 of nieuwer; achievements en eigen sets in `manifest.json` hebben Mini Engine 0.5 nodig, afbeeldingen in eigen sets Mini Engine 0.8, de ruimte voor afbeeldingen per account beheren Mini Engine 0.8.1, en privégames en uitnodigingen Mini Engine 0.9.
 
 ## Installeren
 
@@ -50,6 +50,7 @@ Om te publiceren heb je wel een dev key nodig. Die krijg je van wie de Mini Engi
 
 ```sh
 me game upload                                # eerste versie, meteen actief en zichtbaar
+me game upload --private                      # of eerst alleen voor jou en wie je uitnodigt
 ```
 
 Pas daarna de game aan, verhoog `version` in `manifest.json` en upload opnieuw:
@@ -92,12 +93,16 @@ Elk commando heeft `--help`, bijvoorbeeld `me game upload --help`.
 
 | Commando | Doet |
 | --- | --- |
-| `me game list` | Je games met actieve versie, status (aan, uit of geblokkeerd) en aantal versies. |
+| `me game list` | Je games met actieve versie, status (aan, uit of geblokkeerd), of ze privé zijn en aantal versies. |
 | `me game new <slug> [--dir MAP] [--template NAAM]` | Maakt een werkend spel vanuit een SDK-sjabloon in `./<slug>`, zonder vragen. Standaard de stemgame, in het Engels en eenvoudig opgemaakt; `--title`, `--players`, `--modes`, `--look`, `--theme` en `--lang` werken als bij `me init`. |
-| `me game upload [map] [--activate] [--dry-run]` | Pakt de map in en uploadt hem als nieuwe versie. |
+| `me game upload [map] [--activate] [--private] [--dry-run]` | Pakt de map in en uploadt hem als nieuwe versie. Met `--private` is de game privé voordat de versie live kan gaan (zie [Privégames](#privégames)). |
 | `me game versions <id>` | Alle versies met grootte, hash en of een lopende room ze gebruikt. |
 | `me game activate <id> <versie>` | Maakt een versie actief. Zo zet je ook een oudere versie terug. |
 | `me game enable <id>` / `me game disable <id>` | Toont of verbergt de game. Lopende rooms spelen door. |
+| `me game private <id>` / `me game public <id>` | Maakt de game privé (alleen jij en wie je uitnodigt, kunnen hem starten) of weer openbaar. |
+| `me game invite <id> <gebruikersnaam>...` | Nodigt accounts uit die je privégame mogen starten, ook zonder dev key. |
+| `me game uninvite <id> <gebruikersnaam>` | Trekt een uitnodiging in. Lopende rooms spelen door. |
+| `me game invites <id>` | Wie je voor een game hebt uitgenodigd. |
 | `me game delete-version <id> <versie>` | Verwijdert één oude versie. |
 | `me game prune <id> [--keep N] [--yes] [--dry-run]` | Verwijdert alle versies behalve de actieve en de nieuwste N (standaard 3). Versies die een lopende room gebruikt, blijven staan. |
 | `me game delete <id> [--yes]` | Verwijdert de hele game met alle versies. |
@@ -137,7 +142,7 @@ De CLI bevat de skills uit de Mini Engine SDK voor Claude Code: `build-mini-engi
 
 ```
 ✓ Node.js 22.12.0
-✓ CLI 0.8.1 is de nieuwste versie
+✓ CLI 0.9.0 is de nieuwste versie
 ✓ Server https://miniengine.nl (standaard) is bereikbaar, Mini Engine 0.6.1
 ✗ Geen dev key voor https://miniengine.nl; uploaden kan nog niet. Spelen met me dev lukt wel.
     Vraag een dev key aan wie de server beheert en log in met: me auth
@@ -151,7 +156,7 @@ In een map met `manifest.json` doet doctor dezelfde controles als `me game uploa
 
 ### Beheer
 
-Voor wie de server beheert, met het admintoken (`MINI_ENGINE_ADMIN_TOKEN` van de server, opslaan met `me admin login`). `me admin --help` toont alle beheercommando's; deze gaan over de ruimte voor afbeeldingen:
+Voor wie de server beheert, met het admintoken (`MINI_ENGINE_ADMIN_TOKEN` van de server, opslaan met `me admin login`). `me admin --help` toont alle beheercommando's. `me admin games` toont alle geüploade games met eigenaar, status en in de kolom PRIVÉ of ze privé zijn; ook een privégame kun je blokkeren. Deze gaan over de ruimte voor afbeeldingen:
 
 | Commando | Doet |
 | --- | --- |
@@ -205,7 +210,7 @@ In de eigen `data.json` van de game (de inhoud zonder gekozen set) is een afbeel
 
 Met `me dev --lan` doen ook telefoons op hetzelfde wifi mee. `me dev` toont dan een adres zoals `http://192.168.1.20:3171/join`, en in het overzicht een QR-code. Een telefoon opent dat adres, kiest een naam en krijgt een eigen stoel; het overzicht toont die stoel zonder scherm. Alleen die aanmeldpagina en de stoelen van de telefoons staan op het netwerk, en een telefoon kan daar alleen wat een speler nodig heeft. Het overzicht, **Nieuwe kamer**, **Speler toevoegen** en de andere stoelen blijven op je eigen computer (`127.0.0.1`). Er doen hoogstens 8 telefoons tegelijk mee; bij **Nieuwe kamer** gaan hun stoelen dicht en doen ze opnieuw mee via hetzelfde adres. Iedereen op het netwerk kan de aanmeldpagina openen, dus gebruik `--lan` alleen op een netwerk dat je vertrouwt.
 
-`me dev` is een nabootsing. Hij volgt het protocol van de engine en de tests van de CLI draaien hem met dezelfde stappen als de echte engine, maar test je game voor een avond met vrienden ook een keer op een echte server, bijvoorbeeld met `me game upload` en een testversie.
+`me dev` is een nabootsing. Hij volgt het protocol van de engine en de tests van de CLI draaien hem met dezelfde stappen als de echte engine, maar test je game voor een avond met vrienden ook een keer op een echte server, bijvoorbeeld met `me game upload --private`: dan zien alleen jij en wie je uitnodigt hem.
 
 ## Uploaden
 
@@ -226,11 +231,32 @@ ontwerp/
 assets/**/*.wav
 ```
 
-Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` gebruikt, dat `host_modes` een of meer van `"playing"`, `"tv"` en `"moderator"` bevat (`"hostless"` is alleen voor ingebouwde games) met `default_host_mode` daarin, dat een eventueel `icon` klopt (zie hieronder) en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
+Symlinks worden geweigerd. Voordat er iets verstuurd wordt, controleert de CLI de limieten van de server: maximaal 4096 bestanden, 2 MiB per bestand, 10 MiB in totaal, paden tot 255 bytes en 32 niveaus diep. Ook controleert hij dat de game `runtime: "host"` gebruikt, dat `host_modes` een of meer van `"playing"`, `"tv"` en `"moderator"` bevat (`"hostless"` is alleen voor ingebouwde games) met `default_host_mode` daarin, dat een eventueel `icon` klopt (zie hieronder), dat er geen `private` in het manifest staat (zie [Privégames](#privégames)) en dat `host.html` en `player.html` (en `display.html` als `has_display` aan staat) bestaan. Met `--dry-run` zie je wat er mee zou gaan.
 
-De eerste versie van een nieuwe game wordt meteen actief: hij staat dan voor iedereen op de startpagina van die server. `me game upload` zegt dat er na de eerste upload bij, met het adres om een kamer te maken. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
+De eerste versie van een nieuwe game wordt meteen actief: hij staat dan voor iedereen op de startpagina van die server, tenzij je uploadt met `--private`. `me game upload` zegt dat er na de eerste upload bij, met het adres om een kamer te maken. Latere versies worden alleen actief met `--activate` of `me game activate`. Een room houdt de versie waarmee hij begon, ook als je intussen een andere versie activeert; zo'n versie staat in `me game versions` als in gebruik en kan pas weg als de room klaar is. Per account kun je 10 games hebben en per game 10 versies bewaren; ruim oude versies op met `me game prune`.
 
 Na een geslaagde upload van een actieve versie toont de CLI waar je de game start: `<server>/home/new/<id>`. Bij een server ouder dan 0.5 is dat nog `/demo/new/<id>`.
+
+### Privégames
+
+Vanaf Mini Engine 0.9 kan een game privé zijn: alleen jij en de accounts die je uitnodigt, zien hem op de site als ze zijn ingelogd, en alleen zij kunnen er een room mee maken. Zo maak je een game voor jezelf en je vrienden. Meedoen blijft open: iedereen met de code, de link of de QR-code doet mee, ook zonder account.
+
+```sh
+me game upload --private                      # nieuwe game, meteen privé
+me game invite quizavond dani @sander         # vrienden uitnodigen, ook zonder dev key
+me game invites quizavond                     # wie is uitgenodigd
+me game uninvite quizavond sander             # uitnodiging intrekken
+me game public quizavond                      # later toch voor iedereen
+```
+
+- Met `--private` is de game privé voordat de versie live kan gaan, dus een nieuwe game is nooit, ook niet even, voor iedereen zichtbaar. Een upload zonder `--private` laat een privégame privé. Een game die er al staat, maak je privé met `me game private <id>`.
+- Privé hoort bij de game op de server, niet in `manifest.json`. Staat er `private` in het manifest, dan stoppen `me game upload`, `me dev` en `me doctor` met een fout: zo'n upload zou anders gewoon voor iedereen live gaan. Ook de engine weigert een upload met `"private": true` in het manifest zonder `--private`.
+- Je nodigt uit op gebruikersnaam, elk account kan het zijn; een `@` ervoor mag. Een game heeft hoogstens 50 uitnodigingen. Maak je de game openbaar, dan blijven de uitnodigingen bewaard en tellen ze weer als hij privé wordt.
+- Op de site staat bij een privégame het label Privé. Een privégame kan niet uitgelicht worden; maak je een uitgelichte game privé, dan gaat hij uit de uitgelichte games, en `me game private` zegt dat erbij. Is de game al privé (of al openbaar), dan zegt de CLI dat en verandert er niets.
+- Rooms die al lopen, spelen door als je de game privé maakt of een uitnodiging intrekt.
+- `me game list` en `me admin games` hebben een kolom PRIVÉ: `ja` of `nee`, en `-` bij een server ouder dan 0.9.
+
+Draait de server een versie ouder dan 0.9, dan stoppen deze commando's en `me game upload --private` met de code `unsupported`, voordat er iets verstuurd is. Weet de CLI de versie niet, dan gaat het verzoek door; een oudere server weigert het dan en publiceert niets. Fouten van de server: `account_not_found` (geen account met die gebruikersnaam), `invite_not_found` (dat account was niet uitgenodigd) en `quota_invites` (de game heeft al 50 uitnodigingen).
 
 ### Iedereen doet mee, of TV
 
@@ -319,4 +345,4 @@ npm run sync-vendor      # haalt sjablonen en skills opnieuw uit ../mini-engine-
 
 `vendor/sdk/` bevat een kopie van de sjablonen (`bin/`), de SDK (`dist/` en `types/`) en de skills (`skills/`) uit de Mini Engine SDK, in dezelfde indeling als de SDK zelf. Pas die bestanden niet met de hand aan: `scripts/sync-vendor.mjs` kopieert ze uit een SDK-checkout (`--sdk PAD` of `MINI_ENGINE_SDK`) en legt hashes en SDK-versie vast in `vendor/VENDOR.json`. `npm test` faalt als `vendor/` daarvan afwijkt.
 
-De tests draaien tegen een nagebouwde server. `npm run e2e` draait de CLI tegen een echte testserver: uploaden, versies, rooms, aan en uit, opruimen en verwijderen. Het script zegt zelf welke gegevens van die server het nodig heeft. Gebruik het alleen tegen een testserver.
+De tests draaien tegen een nagebouwde server. `npm run e2e` draait de CLI tegen een echte testserver: uploaden, versies, rooms, aan en uit, privégames en uitnodigingen, opruimen en verwijderen. Het script zegt zelf welke gegevens van die server het nodig heeft. Gebruik het alleen tegen een testserver.

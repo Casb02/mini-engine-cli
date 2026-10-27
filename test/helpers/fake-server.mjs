@@ -3,6 +3,18 @@ import { createServer } from 'node:http';
 
 const MiB = 1024 * 1024;
 const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
+const MAX_INVITES = 50;
+const INVALID_JSON = 'Stuur geldige JSON met de verwachte velden en Content-Type application/json.';
+
+// True for a version before major.minor, and for a missing or unreadable one.
+function before(version, major, minor) {
+  const parts = /^(\d+)\.(\d+)/.exec(version ?? '');
+  if (!parts) return true;
+  return Number(parts[1]) < major || (Number(parts[1]) === major && Number(parts[2]) < minor);
+}
+
+// Usernames as the engine reads them: trimmed, ASCII lowercase.
+const normalizeUsername = name => String(name).trim().replace(/[A-Z]/g, c => c.toLowerCase());
 
 class HttpError extends Error {
   constructor(status, code, message) {
@@ -28,7 +40,7 @@ function contentHash(files) {
 export async function startFakeServer({ adminToken = 'admin-token-0123456789abcdef0123456789', builtins = ['common-dice'], quotaGames = 10, quotaReleases = 10, version = '0.5.0' } = {}) {
   let clock = 1_760_000_000;
   const tick = () => (clock += 1);
-  const state = { accounts: new Map(), tokens: [], games: new Map(), mediaRequests: [], requests: [], adminToken, version };
+  const state = { accounts: new Map(), tokens: [], games: new Map(), featured: [], mediaRequests: [], requests: [], adminToken, version };
 
   const addAccount = username => {
     const account = { id: randomUUID(), username, display_name: username[0].toUpperCase() + username.slice(1), admin: false, email_verified: false, created_at: clock, game_limit: quotaGames, media_used: 0, media_limit: null };
@@ -58,11 +70,16 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     active: game.active_version === r.version,
     in_use: r.in_use,
   });
+  // Private games and invites arrived in Mini Engine 0.9. Below that (or without a version) the fake
+  // answers like 0.8.1: no private or invites in a game, 422 invalid_json for a private field, and
+  // 404 not_found on the invite routes.
+  const privateGames = () => !before(state.version, 0, 9);
   const view = game => ({
     id: game.id,
     title: game.title,
     enabled: game.enabled,
     blocked: game.blocked,
+    ...(privateGames() ? { private: game.private, invites: game.invites.length } : {}),
     active_version: game.active_version,
     created_at: game.created_at,
     updated_at: game.updated_at,
@@ -71,6 +88,45 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
   const adminView = game => {
     const owner = state.accounts.get(game.owner);
     return { ...view(game), owner: { id: owner.id, username: owner.username, display_name: owner.display_name } };
+  };
+  const inviteView = game => ({
+    private: game.private,
+    invites: game.invites
+      .map(invite => {
+        const account = state.accounts.get(invite.username);
+        return { username: account.username, display_name: account.display_name, invited_at: invite.invited_at };
+      })
+      .sort((a, b) => a.username.localeCompare(b.username)),
+  });
+  const knownAccount = name => {
+    if (!state.accounts.has(name)) fail(404, 'account_not_found', `Er is geen account met de gebruikersnaam ${name}.`);
+    return state.accounts.get(name);
+  };
+
+  function invite(game, body) {
+    const given = body?.usernames;
+    if (!body || Object.keys(body).some(field => field !== 'usernames') || !Array.isArray(given) || given.some(name => typeof name !== 'string')) {
+      fail(422, 'invalid_json', INVALID_JSON);
+    }
+    const names = [...new Set(given.map(normalizeUsername))];
+    if (!names.length || names.length > MAX_INVITES) fail(400, 'invalid_request', `Nodig 1 tot ${MAX_INVITES} accounts tegelijk uit.`);
+    for (const name of names) {
+      knownAccount(name);
+      if (name === game.owner) fail(400, 'invalid_request', 'Dit is je eigen game; die kun je altijd starten.');
+    }
+    const added = names.filter(name => !game.invites.some(invite => invite.username === name));
+    if (game.invites.length + added.length > MAX_INVITES) {
+      fail(409, 'quota_invites', `Een game heeft hoogstens ${MAX_INVITES} uitnodigingen, en deze heeft er al ${game.invites.length}. Trek er eerst een in.`);
+    }
+    const now = tick();
+    for (const name of added) game.invites.push({ username: name, invited_at: now });
+    return [200, { ...inviteView(game), added }];
+  }
+
+  // Going private takes a game off the featured list, as the engine does in the same transaction.
+  const setPrivate = (game, value) => {
+    game.private = value;
+    if (value) state.featured = state.featured.filter(id => id !== game.id);
   };
 
   const ownedGames = username => [...state.games.values()].filter(g => g.owner === username).length;
@@ -117,11 +173,12 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
   };
   const ownGame = (account, id) => {
     const game = state.games.get(id);
-    if (!game || game.owner !== account.username) fail(404, 'game_not_found', 'Deze game bestaat niet.');
+    if (!game || game.owner !== account.username) fail(404, 'game_not_found', 'Je hebt geen game met dit id.');
     return game;
   };
 
   function upload(account, id, body) {
+    if (body?.private !== undefined && (!privateGames() || typeof body.private !== 'boolean')) fail(422, 'invalid_json', INVALID_JSON);
     if (!body || typeof body.files !== 'object' || Array.isArray(body.files)) fail(400, 'invalid_request', 'files ontbreekt.');
     const files = {};
     let total = 0;
@@ -151,9 +208,10 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     if (game && game.releases.length >= quotaReleases) fail(409, 'quota_releases', `Een game mag ${quotaReleases} versies bewaren. Verwijder eerst oude versies.`);
     const now = tick();
     if (!game) {
-      game = { id, title: manifest.title ?? id, owner: account.username, enabled: true, blocked: false, active_version: null, created_at: now, updated_at: now, releases: [] };
+      // A new private game is private from the start, like the INSERT of the engine.
+      game = { id, title: manifest.title ?? id, owner: account.username, enabled: true, blocked: false, private: body.private === true, invites: [], active_version: null, created_at: now, updated_at: now, releases: [] };
       state.games.set(id, game);
-    }
+    } else if (body.private !== undefined) setPrivate(game, body.private);
     const created = { version: manifest.version, content_hash: contentHash(files), size: total, file_count: Object.keys(files).length, created_at: now, in_use: false, files };
     game.releases.push(created);
     if (!game.active_version || body.activate === true) game.active_version = created.version;
@@ -164,6 +222,11 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
   function route(method, path, req, body, query) {
     let m;
     if (method === 'GET' && path === '/api/health') return [200, { status: 'ok', version: state.version }];
+    // The public list, as a visitor sees it: only enabled public games, and the featured ones among them.
+    if (method === 'GET' && path === '/api/v1/games') {
+      const games = [...state.games.values()].filter(game => game.enabled && !game.blocked && !game.private);
+      return [200, { games: games.map(game => ({ id: game.id, title: game.title, version: game.active_version })), featured: state.featured.filter(id => games.some(game => game.id === id)) }];
+    }
     if (path.startsWith('/api/v1/admin/')) {
       requireAdmin(req);
       if (method === 'POST' && path === '/api/v1/admin/dev-tokens') {
@@ -268,6 +331,19 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
         game.active_version = version;
         return [200, view(game)];
       }
+      if (privateGames() && (m = /^\/api\/v1\/dev\/games\/([^/]+)\/invites$/.exec(path))) {
+        const game = ownGame(account, decodeURIComponent(m[1]));
+        if (method === 'GET') return [200, inviteView(game)];
+        if (method === 'POST') return invite(game, body);
+      }
+      if (privateGames() && (m = /^\/api\/v1\/dev\/games\/([^/]+)\/invites\/([^/]+)$/.exec(path)) && method === 'DELETE') {
+        const game = ownGame(account, decodeURIComponent(m[1]));
+        const { username } = knownAccount(normalizeUsername(decodeURIComponent(m[2])));
+        const index = game.invites.findIndex(invite => invite.username === username);
+        if (index < 0) fail(404, 'invite_not_found', `@${username} is niet uitgenodigd voor deze game.`);
+        game.invites.splice(index, 1);
+        return [204];
+      }
       if ((m = /^\/api\/v1\/dev\/games\/([^/]+)\/versions\/([^/]+)$/.exec(path)) && method === 'DELETE') {
         const game = ownGame(account, decodeURIComponent(m[1]));
         const version = decodeURIComponent(m[2]);
@@ -282,9 +358,17 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
         const game = ownGame(account, decodeURIComponent(m[1]));
         if (method === 'GET') return [200, view(game)];
         if (method === 'PUT') {
-          if (typeof body?.enabled !== 'boolean') fail(400, 'invalid_request', 'enabled ontbreekt.');
+          if (!privateGames()) {
+            if (body?.private !== undefined) fail(422, 'invalid_json', INVALID_JSON);
+            if (typeof body?.enabled !== 'boolean') fail(400, 'invalid_request', 'enabled ontbreekt.');
+          } else {
+            const fields = Object.keys(body ?? {});
+            if (!body || fields.some(field => !['enabled', 'private'].includes(field) || typeof body[field] !== 'boolean')) fail(422, 'invalid_json', INVALID_JSON);
+            if (!fields.length) fail(400, 'invalid_request', 'Geef enabled of private mee.');
+          }
           if (game.blocked && body.enabled) fail(403, 'game_blocked', 'De beheerder heeft deze game geblokkeerd.');
-          game.enabled = body.enabled;
+          if (body.enabled !== undefined) game.enabled = body.enabled;
+          if (body.private !== undefined) setPrivate(game, body.private);
           return [200, view(game)];
         }
         if (method === 'DELETE') {
@@ -339,6 +423,9 @@ export async function startFakeServer({ adminToken = 'admin-token-0123456789abcd
     addMediaRequest,
     issueToken,
     game: id => state.games.get(id),
+    feature(ids) {
+      state.featured = [...ids];
+    },
     setInUse(id, version, value = true) {
       state.games.get(id).releases.find(r => r.version === version).in_use = value;
     },

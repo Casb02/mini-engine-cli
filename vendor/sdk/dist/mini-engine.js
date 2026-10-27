@@ -37,11 +37,17 @@ var ApiClient = class {
   call(path, options = {}) {
     return http(endpoint(this.baseUrl, `/api/v1${path}`), options, this.fetcher ?? globalThis.fetch);
   }
+  /** Playable games; with an `accountToken` also the private games of that account and the ones it was invited to (Mini Engine 0.9+). */
   getGames() {
-    return this.call("/games");
+    return this.call("/games", { token: this.accountToken });
   }
-  getGame(id) {
-    return this.call(`/games/${encodeURIComponent(id)}`);
+  /**
+   * One game; a private game answers 404 `game_not_found` unless `accountToken` is its owner or an invitee.
+   * With `room`, the code of a live room of this game, it answers for anyone with the release that room plays, also for a private game (Mini Engine 0.9+): use that inside a room.
+   */
+  getGame(id, { room } = {}) {
+    const query = room ? `?room=${encodeURIComponent(normalizeCode(room))}` : "";
+    return this.call(`/games/${encodeURIComponent(id)}${query}`, { token: this.accountToken });
   }
   createRoom(options) {
     return this.call("/rooms", { method: "POST", token: this.accountToken, body: JSON.stringify(options) });
@@ -124,9 +130,16 @@ var ApiClient = class {
     const type = contentType || (file instanceof Blob ? file.type : "") || "application/octet-stream";
     return this.call("/accounts/media", { method: "POST", token: this.accountToken, headers: { "Content-Type": type }, body: file });
   }
-  /** The account's images, newest first, with the bytes used and the quota. */
+  /** The account's images, newest first, with the bytes used, the account's space and its latest request for space. */
   listMedia() {
     return this.call("/accounts/media", { token: this.accountToken });
+  }
+  /**
+   * Asks the admins for image space, with an optional note of at most 500 characters. Engine 0.8.1+ (older engines: 404).
+   * Once per 7 days: sooner is 429 `media_request_wait`. A new request replaces one that is still pending.
+   */
+  requestMediaSpace({ message } = {}) {
+    return this.call("/accounts/media/requests", { method: "POST", token: this.accountToken, body: JSON.stringify(message === void 0 ? {} : { message }) });
   }
   /** Deletes an image; 409 `media_in_use` while one of the account's sets uses it. */
   deleteMedia(id) {

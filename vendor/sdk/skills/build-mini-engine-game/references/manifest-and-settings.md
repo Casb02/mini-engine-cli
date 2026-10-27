@@ -70,6 +70,8 @@ Role pages are served from `/api/v1/games/<id>/<role>`, so reference assets with
 | `achievements` | Optional (0.5+), ≤ 50: `[{id, title, description}]`. `id` `^[a-z0-9][a-z0-9_-]{0,47}$`, unique; `title` 1–60 chars; `description` 1–160 chars; no control characters. Public through `GET /api/v1/games`. The host awards them (see `host-runtime-patterns.md`). |
 | `set_kinds` | Optional (0.5+), ≤ 4: `[{id, title, description, schema}]`. `id`, `title` and `description` follow the achievement rules; `schema` uses the set schema dialect below. Players save sets of these kinds on their account and pick one for a room. |
 
+There is no manifest field to make a game private: `"private": true` in `manifest.json` makes nothing private, so `me dev` and `me game upload` (CLI 0.9+) refuse any `private` there, and Mini Engine 0.9+ refuses an upload whose manifest says `"private": true` without the upload asking for it. Upload with `me game upload --private`, or switch later with `me game private <id>`.
+
 The engine reads only the fields above. Anything else in `manifest.json` is ignored without a warning, so a misspelt field (`achievement`, `setKinds`) silently does nothing: check `curl -s http://127.0.0.1:3170/api/v1/games/<id>` while `me dev` runs (or the server after an upload). A server older than Mini Engine 0.5 ignores `achievements` and `set_kinds` the same way; the game still loads there, without them. One older than 0.5.1 ignores `icon` but refuses `playing` in `host_modes` for a host game; one older than 0.5.2 refuses `tv`.
 
 ## host_modes: who the creator is
@@ -95,7 +97,7 @@ The person creating the room picks one of the declared modes in the create form;
 | Refused | `<script`, `<foreignobject`, `javascript:` or any `on…=` event attribute, case-insensitive. |
 | Error | `manifest.json: icon …` from `me dev` and `me game upload`; `Invalid icon: <reason>.` from the server. |
 
-`GET /api/v1/games` and `GET /api/v1/games/<id>` return `icon` as declared (omitted when absent). `/home`, the games list and the create form load it from `/games/<id>/<icon>?v=<version>` as `<img alt="">` in a 52 px tile. Draw it as a square `viewBox="0 0 48 48"`, a full tile with its own background (`rx="12"`), one or two simple shapes in the game's colours; no text, no external references, no fonts.
+`GET /api/v1/games` and `GET /api/v1/games/<id>` return `icon` as declared (omitted when absent). `/home`, the games list and the create form load it from `/games/<id>/<icon>?v=<version>` as `<img alt="">` in a 52 px tile; a private game (Mini Engine 0.9+) also gets `icon_data`, the same icon as a `data:` URL, which those pages use instead. Draw it as a square `viewBox="0 0 48 48"`, a full tile with its own background (`rx="12"`), one or two simple shapes in the game's colours; no text, no external references, no fonts.
 
 ## Settings are fixed once people play
 
@@ -192,7 +194,7 @@ Limits (the engine applies them; the game only shows the result):
 | Upload formats | PNG, JPEG, WebP, GIF (first frame), detected from the bytes | 415 `media_unsupported` (SVG, HEIC, …) |
 | Upload size | ≤ 10 MiB raw; ≤ 40 million pixels | 413 `media_too_large`; 400 `media_invalid` |
 | Stored image | Re-encoded JPEG (PNG when transparent), metadata stripped, upright, longest side ≤ 1920 px (never enlarged), ≤ 1 MiB | — |
-| Per account | ≤ 250 MiB of images | 409 `quota_media` |
+| Per account | ≤ `limit_bytes`, the account's own space (engine 0.8.1+; may be 0): unless an admin chose an amount, admins 1 GiB, accounts with a working dev key 250 MiB, others nothing. Lowering it keeps stored images; only new uploads are refused. More: `ApiClient.requestMediaSpace`, once per 7 days | 409 `quota_media`; 429 `media_request_wait` |
 | Per set | ≤ 100 distinct images, ≤ 50 MiB together | 409 `quota_set_media` |
 | Unused images | Deleted once older than 24 h while no set of the account uses them | — |
 | Uploads | 60 per minute per address | 429 `rate_limit` |
